@@ -75,7 +75,7 @@ function revokeSession(sessionId) {
 }
 
 function getSession(sessionId) {
-  return getDb().prepare('SELECT * FROM sessions WHERE id = ? AND revoked = 0').get(sessionId);
+  return getDb().prepare('SELECT * FROM sessions WHERE id = ? AND revoked = 0 AND expires_at > ?').get(sessionId, Date.now());
 }
 
 // ── Credentials check ─────────────────────────────────────────────────────────
@@ -84,7 +84,8 @@ function hasAnyCredential() {
   const db = getDb();
   const wc = db.prepare('SELECT COUNT(*) as n FROM webauthn_credentials').get();
   const tc = db.prepare('SELECT COUNT(*) as n FROM totp_config WHERE enabled = 1').get();
-  return wc.n > 0 || tc.n > 0;
+  const pc = db.prepare('SELECT COUNT(*) as n FROM password_config').get();
+  return wc.n > 0 || tc.n > 0 || pc.n > 0;
 }
 
 module.exports = {

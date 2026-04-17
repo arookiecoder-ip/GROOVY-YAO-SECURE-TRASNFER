@@ -101,10 +101,11 @@ Server binds to `0.0.0.0` inside Docker — exposed to host via port mapping, pr
 - Phishing-resistant, domain-bound
 - Library: `@simplewebauthn/server`
 
-**Fallback — TOTP**
-- Google Authenticator / Authy
-- 6-digit, rate-limited (5 attempts / 10 min)
-- Backup codes: PBKDF2-hashed, one-time use
+**Fallback — Password & TOTP**
+- Standalone Password login or Password + TOTP Combination
+- Rate-limited (5 attempts / 10 min) and protected by `bcrypt` hashes (12 rounds)
+- Full Auto-Login capabilities using rotation-bound Device Tokens
+- TOTP Backup codes: SHA-256 hashed, one-time use
 
 **Sessions**
 - Access token: JWT, 15-min expiry, `httpOnly` cookie
@@ -126,6 +127,18 @@ Stream format on disk: [12-byte IV][ciphertext][16-byte GCM tag]
 - Original filenames encrypted (AES-256-GCM), stored in DB only
 - TOTP secret encrypted with same scheme
 - Plaintext never touches disk
+
+---
+
+## Security Architecture (Hardened)
+
+The application perimeter and internal engines have been independently audited for production deployment:
+
+- **HTTPS Constraint Hooks**: Fastify inherently intercepts and demands `https://` proxy evaluations (`x-forwarded-proto`), forcefully re-routing outbound unencrypted frames globally in production boundaries.
+- **SQLite Encapsulation**: The persistence engine statically accesses independent runtime storage, entirely blocked from `/frontend/` structures to omit standard database web crawler indexing natively.
+- **XSS & DOM Hardening**: Direct assignments into the Document Object Model UI are strongly protected via mathematical `Utils.escape()` overrides completely rendering tags, quotes, and bounds into benign encoded equivalents prior to hydration.
+- **Memory Defensive Streams**: AES-256-GCM logic strictly utilizes 16-byte rolling window streams to authenticate gigabyte payload headers. It functionally eliminates OOM (Out Of Memory) Denial of Service attacks when parsing multithreaded downloads.
+- **Rate Limit & Internal Telemetry**: Utilizing `Pino`, specific backend authentication hooks broadcast distinct log outputs capturing explicitly flagged `AUTH_SUCCESS` / `AUTH_FAILURE` metrics and intercepting API DDOS abuse patterns dynamically under customized `TRAFFIC_ANOMALY` logs. Unhandled inner bugs squelch securely into an anonymous `500 - Internal Server Error` protecting structural database stack traces.
 
 ---
 

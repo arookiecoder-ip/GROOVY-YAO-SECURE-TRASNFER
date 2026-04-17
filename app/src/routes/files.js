@@ -15,11 +15,12 @@ const {
 } = require('../services/encryption');
 
 const EXPIRY_OPTIONS = {
-  '1h':  60 * 60 * 1000,
-  '6h':  6 * 60 * 60 * 1000,
-  '24h': 24 * 60 * 60 * 1000,
-  '7d':  7 * 24 * 60 * 60 * 1000,
-  '30d': 30 * 24 * 60 * 60 * 1000,
+  '1h':    60 * 60 * 1000,
+  '6h':    6 * 60 * 60 * 1000,
+  '24h':   24 * 60 * 60 * 1000,
+  '7d':    7 * 24 * 60 * 60 * 1000,
+  '30d':   30 * 24 * 60 * 60 * 1000,
+  'never': null,
 };
 
 function ipHash(ip) {
@@ -48,6 +49,7 @@ function buildFileRow(row) {
     expires_at: row.expires_at || null,
     created_at: row.created_at,
     download_count: row.download_count,
+    is_public: row.is_public === 1,
   };
 }
 
@@ -60,7 +62,7 @@ async function filesRoutes(fastify) {
     if (!data) return reply.code(400).send({ error: 'No file' });
 
     const expiresIn = req.body?.expires || data.fields?.expires?.value || '24h';
-    const expiryMs = EXPIRY_OPTIONS[expiresIn] ?? EXPIRY_OPTIONS['24h'];
+    const expiryMs = (expiresIn in EXPIRY_OPTIONS) ? EXPIRY_OPTIONS[expiresIn] : EXPIRY_OPTIONS['24h'];
 
     const fileId = uuidv4();
     const storageId = uuidv4();
@@ -115,7 +117,7 @@ async function filesRoutes(fastify) {
     const sha256 = hasher.digest('hex');
     const { ciphertext: encName, iv: nameIv, tag: nameTag } = encryptFilename(data.filename, fileId);
     const mimeType = data.mimetype || 'application/octet-stream';
-    const expiresAt = now + expiryMs;
+    const expiresAt = expiryMs !== null ? now + expiryMs : null;
 
     const db = getDb();
     db.prepare(`
@@ -141,17 +143,29 @@ async function filesRoutes(fastify) {
       size: totalSize,
       sha256,
       expires_at: expiresAt,
+      never_expires: expiresAt === null,
       downloadUrl: `/api/files/${fileId}/download`,
     });
   });
 
   // ── Download ─────────────────────────────────────────────────────────────
-  fastify.get('/files/:id/download', async (req, reply) => {
+  fastify.get('/files/:id/download', { config: { public: true } }, async (req, reply) => {
     const db = getDb();
     const row = db.prepare('SELECT * FROM files WHERE id = ? AND status = ?').get(req.params.id, 'complete');
     if (!row) return reply.code(404).send({ error: 'File not found' });
     if (row.expires_at && row.expires_at < Date.now()) {
       return reply.code(410).send({ error: 'File expired' });
+    }
+    if (!row.is_public) {
+      const token = req.cookies?.access_token;
+      if (!token) return reply.code(401).send({ error: 'This file is private' });
+      try {
+        const { verifyAccessToken, getSession } = require('../services/auth');
+        const sessionId = await verifyAccessToken(token);
+        if (!getSession(sessionId)) return reply.code(401).send({ error: 'Session revoked' });
+      } catch {
+        return reply.code(401).send({ error: 'Unauthorized' });
+      }
     }
 
     const filePath = storagePath(row.storage_id);
@@ -244,19 +258,35 @@ async function filesRoutes(fastify) {
     return reply.send({ dataUrl, downloadUrl });
   });
 
+  // ── Visibility toggle ─────────────────────────────────────────────────────
+  fastify.patch('/files/:id/visibility', async (req, reply) => {
+    const { isPublic } = req.body || {};
+    if (typeof isPublic !== 'boolean') return reply.code(400).send({ error: 'isPublic boolean required' });
+    const db = getDb();
+    const row = db.prepare('SELECT id FROM files WHERE id = ? AND status = ?').get(req.params.id, 'complete');
+    if (!row) return reply.code(404).send({ error: 'File not found' });
+    db.prepare('UPDATE files SET is_public = ? WHERE id = ?').run(isPublic ? 1 : 0, req.params.id);
+    return reply.send({ ok: true, isPublic });
+  });
+
   // ── Extend expiry ─────────────────────────────────────────────────────────
   fastify.patch('/files/:id/expiry', async (req, reply) => {
     const { expiresIn } = req.body || {};
-    if (!EXPIRY_OPTIONS[expiresIn]) return reply.code(400).send({ error: 'Invalid expiresIn' });
+    if (!(expiresIn in EXPIRY_OPTIONS)) return reply.code(400).send({ error: 'Invalid expiresIn' });
 
     const db = getDb();
     const row = db.prepare('SELECT id, expires_at FROM files WHERE id = ? AND status = ?').get(req.params.id, 'complete');
     if (!row) return reply.code(404).send({ error: 'File not found' });
 
-    const base = row.expires_at && row.expires_at > Date.now() ? row.expires_at : Date.now();
-    const newExpiry = base + EXPIRY_OPTIONS[expiresIn];
+    let newExpiry;
+    if (EXPIRY_OPTIONS[expiresIn] === null) {
+      newExpiry = null;
+    } else {
+      const base = row.expires_at && row.expires_at > Date.now() ? row.expires_at : Date.now();
+      newExpiry = base + EXPIRY_OPTIONS[expiresIn];
+    }
     db.prepare('UPDATE files SET expires_at = ? WHERE id = ?').run(newExpiry, row.id);
-    return reply.send({ ok: true, expires_at: newExpiry });
+    return reply.send({ ok: true, expires_at: newExpiry, never_expires: newExpiry === null });
   });
 
   // ── ZIP streaming (multi-file) ────────────────────────────────────────────

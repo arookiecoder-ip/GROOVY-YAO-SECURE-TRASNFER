@@ -156,6 +156,19 @@
         });
       });
 
+      // Theme toggle
+      const themeBtn = document.getElementById('btn-theme');
+      const applyTheme = (dark) => {
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        themeBtn.textContent = dark ? '☀' : '☾';
+        localStorage.setItem('theme', dark ? 'dark' : 'light');
+      };
+      const savedTheme = localStorage.getItem('theme');
+      applyTheme(savedTheme !== 'light');
+      themeBtn.addEventListener('click', () => {
+        applyTheme(document.documentElement.getAttribute('data-theme') === 'light');
+      });
+
       // Logout
       document.getElementById('btn-logout').addEventListener('click', async () => {
         await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });

@@ -6,9 +6,21 @@ const UploadManager = {
   // uploadId -> { file, totalChunks, chunkShas, aborted }
   _active: {},
 
+  _selectedExpiry: '1h',
+
   init() {
     const dz = document.getElementById('drop-zone');
     const fi = document.getElementById('file-input');
+
+    // Expiry picker — clicks handled here, not bubbled to drop zone
+    document.querySelectorAll('.expiry-opt').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.expiry-opt').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        this._selectedExpiry = btn.dataset.expires;
+      });
+    });
 
     dz.addEventListener('click', () => fi.click());
     dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag-over', 'neon-pulse'); });
@@ -48,7 +60,7 @@ const UploadManager = {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('expires', '24h');
+      fd.append('expires', this._selectedExpiry);
 
       const res = await fetch('/api/upload/simple', {
         method: 'POST',
@@ -89,7 +101,7 @@ const UploadManager = {
           totalSize: file.size,
           totalChunks,
           sha256: fullSha,
-          expiresIn: '24h',
+          expiresIn: this._selectedExpiry,
         }),
         credentials: 'same-origin',
       });

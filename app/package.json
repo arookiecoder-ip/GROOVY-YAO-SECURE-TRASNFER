@@ -13,33 +13,35 @@
     "build": "esbuild frontend/js/app.js --bundle --outfile=frontend/dist/app.bundle.js --minify"
   },
   "dependencies": {
-    "fastify": "^4",
-    "@fastify/helmet": "^11",
-    "@fastify/rate-limit": "^9",
     "@fastify/cookie": "^9",
+    "@fastify/helmet": "^11",
     "@fastify/multipart": "^8",
+    "@fastify/rate-limit": "^9",
     "@fastify/static": "^7",
     "@fastify/websocket": "^10",
-    "better-sqlite3": "^9",
     "@simplewebauthn/server": "^10",
+    "archiver": "^7",
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^9",
+    "dotenv": "^16",
+    "fastify": "^4",
+    "file-type": "^19",
+    "jose": "^5",
+    "node-cron": "^3",
+    "nodemailer": "^8.0.5",
     "otplib": "^12",
     "qrcode": "^1.5",
-    "archiver": "^7",
-    "file-type": "^19",
-    "node-cron": "^3",
-    "jose": "^5",
-    "uuid": "^9",
-    "dotenv": "^16"
+    "uuid": "^9"
   },
   "devDependencies": {
-    "vitest": "^1",
     "@playwright/test": "^1",
+    "@types/archiver": "^6",
+    "@types/better-sqlite3": "^7",
+    "@types/node": "^20",
+    "esbuild": "^0.20",
     "supertest": "^6",
     "typescript": "^5",
-    "esbuild": "^0.20",
-    "@types/node": "^20",
-    "@types/better-sqlite3": "^7",
-    "@types/archiver": "^6"
+    "vitest": "^1"
   },
   "engines": {
     "node": ">=20"

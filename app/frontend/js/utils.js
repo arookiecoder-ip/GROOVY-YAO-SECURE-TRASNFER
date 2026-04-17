@@ -36,7 +36,7 @@ const Utils = {
   },
 
   formatExpiry(expiresAt) {
-    if (!expiresAt) return 'permanent';
+    if (!expiresAt) return '∞';
     const diff = expiresAt - Date.now();
     if (diff <= 0) return 'expired';
     const s = Math.floor(diff / 1000);
@@ -60,9 +60,35 @@ const Utils = {
   },
 
   escape(str) {
-    const el = document.createElement('span');
-    el.textContent = str;
-    return el.innerHTML;
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  },
+
+  confirm(message, okLabel = 'Confirm') {
+    return new Promise((resolve) => {
+      const modal = document.getElementById('confirm-modal');
+      const msg = document.getElementById('confirm-message');
+      const ok = document.getElementById('confirm-ok');
+      const cancel = document.getElementById('confirm-cancel');
+      msg.textContent = message;
+      ok.textContent = okLabel;
+      modal.classList.remove('hidden');
+      const cleanup = (result) => {
+        modal.classList.add('hidden');
+        ok.removeEventListener('click', onOk);
+        cancel.removeEventListener('click', onCancel);
+        resolve(result);
+      };
+      const onOk = () => cleanup(true);
+      const onCancel = () => cleanup(false);
+      ok.addEventListener('click', onOk);
+      cancel.addEventListener('click', onCancel);
+    });
   },
 
   async copyToClipboard(text) {

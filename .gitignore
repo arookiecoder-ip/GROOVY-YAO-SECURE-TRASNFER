@@ -13,7 +13,8 @@ app/data/db/*.db-shm
 app/data/db/*.db-wal
 
 # Uploaded files
-app/data/uploads/
+app/data/storage/
+app/data/chunks/
 
 # Build output
 app/frontend/dist/

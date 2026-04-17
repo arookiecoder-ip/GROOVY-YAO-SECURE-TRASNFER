@@ -13,6 +13,9 @@ const PUBLIC_ROUTES = new Set([
   'POST:/api/auth/webauthn/authenticate/complete',
   'POST:/api/auth/totp/setup',
   'POST:/api/auth/totp/verify',
+  'POST:/api/auth/password/set',
+  'POST:/api/auth/password/login',
+  'POST:/api/auth/combo/login',
 ]);
 
 async function jwtMiddleware(req, reply) {
@@ -20,6 +23,9 @@ async function jwtMiddleware(req, reply) {
 
   // Allow static files and public API routes
   if (!req.url.startsWith('/api/') || PUBLIC_ROUTES.has(key)) return;
+
+  // Routes that handle their own auth (e.g. download checks is_public)
+  if (req.routeOptions?.config?.public) return;
 
   const token = req.cookies?.[ACCESS_COOKIE];
 

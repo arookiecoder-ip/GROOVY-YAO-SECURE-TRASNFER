@@ -3,5 +3,10 @@ dist/
 .env
 *.db
 *.db.backup
+*.db-shm
+*.db-wal
+data/storage/
+data/chunks/
+data/db/
 frontend/dist/
 logs/

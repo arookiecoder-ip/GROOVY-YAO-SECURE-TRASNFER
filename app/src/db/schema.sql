@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS files (
     expires_at INTEGER,
     created_at INTEGER NOT NULL,
     download_count INTEGER DEFAULT 0,
-    status TEXT DEFAULT 'complete'
+    status TEXT DEFAULT 'complete',
+    is_public INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_files_expires_at ON files(expires_at) WHERE expires_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_files_status ON files(status);
@@ -98,3 +99,21 @@ CREATE TABLE IF NOT EXISTS app_config (
     value TEXT NOT NULL,
     updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS password_config (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_used_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS device_tokens (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    label TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    revoked INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_device_tokens_hash ON device_tokens(token_hash);

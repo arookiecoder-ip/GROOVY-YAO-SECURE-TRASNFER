@@ -69,14 +69,14 @@ const FileManagerModule = {
 
     if (this._view === 'list') {
       content.innerHTML = `
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;max-width:100%;">
         <table class="file-list">
           <thead>
             <tr>
               <th>NAME</th>
               <th>SIZE</th>
               <th class="col-expiry">EXPIRES</th>
-              <th class="col-downloads">DL</th>
+              <th class="col-downloads">Downloads</th>
               <th>ACTIONS</th>
             </tr>
           </thead>
@@ -90,8 +90,18 @@ const FileManagerModule = {
       content.innerHTML = `<div class="file-grid">${this._files.map((f) => this._gridCard(f)).join('')}</div>`;
     }
 
-    this._bindActions(content);
+    if (!content._actionsbound) {
+      this._bindActions(content);
+      content._actionsbound = true;
+    }
     this._startExpiryCountdown(content);
+  },
+
+  _visToggle(f) {
+    return `<button class="vis-toggle${f.is_public ? ' is-public' : ''}" data-action="visibility" data-id="${f.id}" data-public="${f.is_public}" title="${f.is_public ? 'Public — click to make private' : 'Private — click to make public'}">
+      <span class="vis-toggle-knob"></span>
+      <span class="vis-toggle-label">${f.is_public ? 'Public' : 'Private'}</span>
+    </button>`;
   },
 
   _listRow(f) {
@@ -103,10 +113,11 @@ const FileManagerModule = {
         <td class="file-expiry col-expiry ${cls}" data-expires="${f.expires_at || ''}">${Utils.formatExpiry(f.expires_at)}</td>
         <td class="file-size col-downloads">${f.download_count}</td>
         <td class="file-actions">
-          <button class="btn btn-ghost btn-sm" data-action="download" data-id="${f.id}">DL</button>
-          <button class="btn btn-ghost btn-sm" data-action="qr"       data-id="${f.id}">QR</button>
-          <button class="btn btn-ghost btn-sm" data-action="extend"   data-id="${f.id}">+EXP</button>
-          <button class="btn btn-danger btn-sm" data-action="delete"  data-id="${f.id}">DEL</button>
+          <button class="btn btn-ghost btn-sm" data-action="download"   data-id="${f.id}">Download</button>
+          <button class="btn btn-ghost btn-sm" data-action="qr"         data-id="${f.id}">QR Code</button>
+          ${this._visToggle(f)}
+          <button class="btn btn-ghost btn-sm" data-action="extend"     data-id="${f.id}">Extend</button>
+          <button class="btn btn-danger btn-sm" data-action="delete"    data-id="${f.id}">Delete</button>
         </td>
       </tr>
     `;
@@ -118,16 +129,21 @@ const FileManagerModule = {
         <div class="file-card-name" title="${Utils.escape(f.name)}">${Utils.escape(f.name)}</div>
         <div class="file-card-meta">${Utils.formatBytes(f.size_bytes)}</div>
         <div class="file-card-actions">
-          <button class="btn btn-ghost btn-sm" data-action="download" data-id="${f.id}">DL</button>
-          <button class="btn btn-ghost btn-sm" data-action="qr"       data-id="${f.id}">QR</button>
-          <button class="btn btn-ghost btn-sm" data-action="extend"   data-id="${f.id}">+EXP</button>
-          <button class="btn btn-danger btn-sm" data-action="delete"  data-id="${f.id}">DEL</button>
+          <button class="btn btn-ghost btn-sm" data-action="download"   data-id="${f.id}">Download</button>
+          <button class="btn btn-ghost btn-sm" data-action="qr"         data-id="${f.id}">QR Code</button>
+          ${this._visToggle(f)}
+          <button class="btn btn-ghost btn-sm" data-action="extend"     data-id="${f.id}">Extend</button>
+          <button class="btn btn-danger btn-sm" data-action="delete"    data-id="${f.id}">Delete</button>
         </div>
       </div>
     `;
   },
 
   _bindActions(root) {
+    root.addEventListener('mousedown', (e) => {
+      const btn = e.target.closest('[data-action="visibility"]');
+      if (btn) e.preventDefault();
+    });
     root.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
@@ -136,30 +152,113 @@ const FileManagerModule = {
         window.location.href = `/api/files/${id}/download`;
       } else if (action === 'qr') {
         QRModule.show(id);
+      } else if (action === 'visibility') {
+        btn.blur();
+        await this._toggleVisibility(id, btn.dataset.public === 'true');
       } else if (action === 'extend') {
-        await this._extendExpiry(id);
+        if (document.getElementById('expiry-popover')) { document.getElementById('expiry-popover').remove(); return; }
+        this._extendExpiry(id, btn);
       } else if (action === 'delete') {
-        if (!confirm('Delete this file?')) return;
+        if (!await Utils.confirm('Delete this file?', 'Delete')) return;
         await this._deleteFile(id);
       }
     });
   },
 
-  async _extendExpiry(id) {
-    const expiresIn = prompt('Extend by: 1h / 6h / 24h / 7d / 30d', '24h');
-    if (!expiresIn) return;
-    const res = await fetch(`/api/files/${id}/expiry`, {
+  async _toggleVisibility(id, currentlyPublic) {
+    const isPublic = !currentlyPublic;
+    const res = await fetch(`/api/files/${id}/visibility`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expiresIn }),
+      body: JSON.stringify({ isPublic }),
       credentials: 'same-origin',
     });
     if (res.ok) {
-      Notifications.success('Expiry extended');
-      this.refresh();
+      const f = this._files.find((f) => f.id === id);
+      if (f) f.is_public = isPublic;
+      // Update only the toggle buttons in-place — no full re-render, no scroll jump
+      document.querySelectorAll(`.vis-toggle[data-id="${id}"]`).forEach((btn) => {
+        btn.dataset.public = String(isPublic);
+        btn.classList.toggle('is-public', isPublic);
+        btn.title = isPublic ? 'Public — click to make private' : 'Private — click to make public';
+        const label = btn.querySelector('.vis-toggle-label');
+        if (label) label.textContent = isPublic ? 'Public' : 'Private';
+      });
+      Notifications.success(isPublic ? 'File is now public' : 'File is now private');
     } else {
-      Notifications.error('Extend failed');
+      Notifications.error('Visibility change failed');
     }
+  },
+
+  _extendExpiry(id, anchorEl) {
+    // Remove any existing popover
+    document.getElementById('expiry-popover')?.remove();
+
+    const opts = [
+      { label: '+1H',  value: '1h' },
+      { label: '+6H',  value: '6h' },
+      { label: '+24H', value: '24h' },
+      { label: '+7D',  value: '7d' },
+      { label: '+30D', value: '30d' },
+      { label: '∞ NEVER', value: 'never' },
+    ];
+
+    const pop = document.createElement('div');
+    pop.id = 'expiry-popover';
+    pop.className = 'expiry-popover';
+    pop.innerHTML = `
+      <div class="expiry-pop-title">// SET EXPIRY</div>
+      <div class="expiry-pop-opts">
+        ${opts.map(o => `<button class="expiry-pop-btn" data-val="${o.value}">${o.label}</button>`).join('')}
+      </div>
+    `;
+
+    // Position near the anchor button
+    document.body.appendChild(pop);
+    const rect = anchorEl.getBoundingClientRect();
+    const popW = pop.offsetWidth;
+    const popH = pop.offsetHeight;
+    const inGrid = !!anchorEl.closest('.file-card');
+    if (inGrid) {
+      // Place to the right of the card
+      let left = rect.right + window.scrollX + 6;
+      if (left + popW > window.innerWidth - 8) left = rect.left + window.scrollX - popW - 6;
+      let top = rect.top + window.scrollY;
+      if (top + popH > window.innerHeight + window.scrollY - 8) top = window.innerHeight + window.scrollY - popH - 8;
+      pop.style.top = `${top}px`;
+      pop.style.left = `${left}px`;
+    } else {
+      let left = rect.left + window.scrollX;
+      if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8;
+      pop.style.top = `${rect.bottom + window.scrollY + 6}px`;
+      pop.style.left = `${left}px`;
+    }
+
+    const cleanup = () => pop.remove();
+
+    pop.querySelectorAll('.expiry-pop-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        cleanup();
+        const expiresIn = btn.dataset.val;
+        const res = await fetch(`/api/files/${id}/expiry`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expiresIn }),
+          credentials: 'same-origin',
+        });
+        if (res.ok) {
+          Notifications.success('Expiry updated');
+          this.refresh();
+        } else {
+          Notifications.error('Extend failed');
+        }
+      });
+    });
+
+    // Close on outside click
+    setTimeout(() => document.addEventListener('click', function handler(e) {
+      if (!pop.contains(e.target)) { cleanup(); document.removeEventListener('click', handler); }
+    }), 0);
   },
 
   async _deleteFile(id) {

@@ -12,6 +12,7 @@ const Notifications = {
       <div class="toast-title">${Utils.escape(title)}</div>
       ${body ? `<div class="toast-body">${Utils.escape(body)}</div>` : ''}
     `;
+    while (this._container.children.length >= 2) this._container.firstElementChild.remove();
     this._container.appendChild(toast);
 
     if (duration > 0) {

@@ -41,20 +41,21 @@
 .file-list {
   width: 100%;
   border-collapse: collapse;
+  table-layout: auto;
 }
 .file-list th {
   text-align: left;
-  font-size: 0.68rem;
+  font-size: 0.82rem;
   color: var(--color-text-dim);
   letter-spacing: 0.12em;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
 }
 .file-list td {
-  padding: 10px 12px;
+  padding: 13px 14px;
   border-bottom: 1px solid var(--color-border);
-  font-size: 0.78rem;
+  font-size: 0.92rem;
   color: var(--color-text);
   vertical-align: middle;
 }
@@ -62,8 +63,10 @@
 
 .file-name { color: var(--color-text-bright); font-weight: 500; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-size { color: var(--color-text-dim); white-space: nowrap; }
-.file-expiry { white-space: nowrap; font-size: 0.72rem; }
-.file-actions { display: flex; gap: 6px; white-space: nowrap; }
+.file-expiry { white-space: nowrap; font-size: 0.88rem; }
+.file-actions { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+.file-list td.file-actions { width: 1%; white-space: nowrap; text-align: right; }
+.file-list .btn { flex-shrink: 0; }
 
 /* ── Grid view ── */
 .file-grid {
@@ -82,7 +85,8 @@
 .file-card:hover { border-color: var(--color-border2); }
 .file-card-name { font-weight: 500; color: var(--color-text-bright); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 8px; }
 .file-card-meta { font-size: 0.7rem; color: var(--color-text-dim); }
-.file-card-actions { display: flex; gap: 6px; margin-top: 12px; }
+.file-card-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.file-card-actions .btn, .file-card-actions .vis-toggle { width: 100%; justify-content: center; }
 
 /* ── Upload item ── */
 .upload-item {
@@ -177,26 +181,116 @@
 .stat-value { font-size: 1.6rem; font-weight: 700; color: var(--color-cyan); }
 .stat-sub { font-size: 0.72rem; color: var(--color-text-dim); margin-top: 4px; }
 
+/* ── Visibility toggle ── */
+.vis-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px 5px 6px;
+  min-width: 100px;
+  border: 1px solid var(--color-border2);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: var(--color-text-dim);
+  transition: all var(--transition);
+  vertical-align: middle;
+}
+.vis-toggle-knob {
+  width: 30px;
+  height: 16px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  position: relative;
+  flex-shrink: 0;
+  transition: border-color var(--transition);
+}
+.vis-toggle-knob::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: currentColor;
+  transition: transform var(--transition), background var(--transition);
+}
+.vis-toggle.is-public .vis-toggle-knob::after {
+  transform: translateX(14px);
+}
+.vis-toggle.is-public {
+  border-color: var(--color-green);
+  color: var(--color-green);
+}
+.vis-toggle:hover {
+  outline: 1px solid currentColor;
+}
+
+/* ── Expiry popover ── */
+.expiry-popover {
+  position: absolute;
+  z-index: 9999;
+  background: var(--color-surface, #0d1117);
+  border: 1px solid var(--color-cyan);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 160px;
+  box-shadow: 0 0 16px rgba(0,245,255,0.15);
+}
+.expiry-pop-title { font-size: 0.7rem; color: var(--color-text-dim); letter-spacing: 0.1em; }
+.expiry-pop-opts { display: flex; flex-direction: column; gap: 4px; }
+.expiry-pop-btn {
+  background: transparent;
+  border: 1px solid var(--color-border2);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+  letter-spacing: 0.05em;
+}
+.expiry-pop-btn:hover { border-color: var(--color-cyan); color: var(--color-cyan); background: rgba(0,245,255,0.07); }
+
+/* ── Confirm modal ── */
+.confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; display: flex; align-items: center; justify-content: center; }
+.confirm-box { background: var(--color-surface); border: 1px solid var(--color-border2); padding: 24px 28px; min-width: 280px; max-width: 400px; }
+.confirm-msg { font-size: 0.9rem; color: var(--color-text-bright); margin-bottom: 20px; letter-spacing: 0.03em; }
+.confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
 /* ── Empty state ── */
 .empty-state { text-align: center; padding: 48px 24px; color: var(--color-text-dim); }
 .empty-state-icon { font-size: 2rem; margin-bottom: 12px; }
 .empty-state-text { font-size: 0.85rem; letter-spacing: 0.08em; }
+
+.file-list .col-expiry,
+.file-list .col-downloads { display: table-cell; }
 
 /* ── Mobile ── */
 @media (max-width: 640px) {
   .file-manager-toolbar { flex-wrap: wrap; gap: 8px; }
   .file-manager-toolbar .sort-group { margin-left: 0; }
 
-  /* Scrollable table wrapper — set by JS, but also make table itself scroll */
-  .file-list { font-size: 0.72rem; }
-  .file-list th, .file-list td { padding: 8px 6px; }
-  .file-name { max-width: 130px; }
-  .file-actions { gap: 4px; }
-  .file-actions .btn { padding: 4px 8px; font-size: 0.65rem; }
-
-  /* Hide less-important columns on small screens */
+  /* Stacked card layout — kill table structure on mobile */
+  .file-list, .file-list tbody, .file-list tr { display: block; width: 100%; }
+  .file-list thead { display: none; }
+  .file-list tr {
+    border-bottom: 1px solid var(--color-border);
+    padding: 10px 0;
+  }
+  .file-list td { display: block; padding: 2px 0; border: none; font-size: 0.78rem; }
+  .file-list td.file-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; width: 100%; text-align: left; }
   .file-list .col-expiry,
   .file-list .col-downloads { display: none; }
+  .file-name { max-width: 100%; }
+  .file-actions { gap: 6px; flex-wrap: wrap; }
+  .file-actions .btn { padding: 4px 10px; font-size: 0.7rem; }
 
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .stat-value { font-size: 1.2rem; }

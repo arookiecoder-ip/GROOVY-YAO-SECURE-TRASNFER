@@ -1,9 +1,18 @@
 const AuthModule = {
   init() {
     document.getElementById('btn-passkey').addEventListener('click', () => this.passkeyAuth());
-    document.getElementById('btn-totp').addEventListener('click', () => this.totpAuth());
-    document.getElementById('totp-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') this.totpAuth();
+    document.getElementById('btn-combo').addEventListener('click', () => this.comboAuth());
+    document.getElementById('password-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this.comboAuth();
+    });
+    const totpInput = document.getElementById('totp-input');
+    totpInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { this.comboAuth(); return; }
+      if (e.metaKey || e.ctrlKey || ['Backspace','Delete','Tab','ArrowLeft','ArrowRight'].includes(e.key)) return;
+      if (!/^\d$/.test(e.key)) e.preventDefault();
+    });
+    totpInput.addEventListener('input', () => {
+      totpInput.value = totpInput.value.replace(/\D/g, '').slice(0, 6);
     });
   },
 
@@ -17,10 +26,11 @@ const AuthModule = {
       const options = await beginRes.json();
 
       const credential = await navigator.credentials.get({ publicKey: this._decodeAuthOptions(options) });
+      const remember = document.getElementById('remember-device')?.checked || false;
       const completeRes = await fetch('/api/auth/webauthn/authenticate/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(this._encodeCredential(credential)),
+        body: JSON.stringify({ ...this._encodeCredential(credential), rememberDevice: remember }),
         credentials: 'same-origin',
       });
       if (!completeRes.ok) {
@@ -35,32 +45,33 @@ const AuthModule = {
     }
   },
 
-  async totpAuth() {
+  async comboAuth() {
     this._clearError();
-    const input = document.getElementById('totp-input');
-    const code = input.value.trim();
-    if (!/^\d{6}$/.test(code)) {
-      this._showError('Enter 6-digit code');
-      return;
-    }
-    const btn = document.getElementById('btn-totp');
+    const totpInput = document.getElementById('totp-input');
+    const pwInput = document.getElementById('password-input');
+    const totpToken = totpInput.value.trim();
+    const password = pwInput.value;
+    if (!/^\d{6}$/.test(totpToken)) { this._showError('Enter 6-digit TOTP code'); totpInput.focus(); return; }
+    if (!password) { this._showError('Enter your password'); pwInput.focus(); return; }
+    const btn = document.getElementById('btn-combo');
     btn.disabled = true;
     try {
-      const res = await fetch('/api/auth/totp/verify', {
+      const res = await fetch('/api/auth/combo/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: code }),
+        body: JSON.stringify({ totpToken, password, rememberDevice: document.getElementById('remember-device')?.checked || false }),
         credentials: 'same-origin',
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || 'Invalid code');
+        throw new Error(err.error || 'Invalid credentials');
       }
       window.GroovyYAO.showApp();
     } catch (err) {
       this._showError(err.message);
-      input.value = '';
-      input.focus();
+      totpInput.value = '';
+      pwInput.value = '';
+      totpInput.focus();
     } finally {
       btn.disabled = false;
     }

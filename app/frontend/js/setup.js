@@ -8,6 +8,11 @@ const SetupModule = {
     document.getElementById('setup-totp-input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this._confirmTotp();
     });
+    document.getElementById('btn-setup-password-set').addEventListener('click', () => this._setPassword());
+    document.getElementById('btn-setup-skip-password').addEventListener('click', () => this._done());
+    document.getElementById('setup-password-confirm').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this._setPassword();
+    });
   },
 
   async _registerPasskey() {
@@ -82,7 +87,7 @@ const SetupModule = {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Invalid code');
       }
-      this._done();
+      this._showPasswordStep();
     } catch (err) {
       btn.disabled = false;
       input.value = '';
@@ -91,8 +96,42 @@ const SetupModule = {
     }
   },
 
+  _showPasswordStep() {
+    document.getElementById('setup-step-totp').classList.add('hidden');
+    document.getElementById('setup-step-password').classList.remove('hidden');
+    document.getElementById('setup-password-input').focus();
+  },
+
+  async _setPassword() {
+    this._clearError();
+    const pw = document.getElementById('setup-password-input').value;
+    const pw2 = document.getElementById('setup-password-confirm').value;
+    if (pw.length < 8) { this._showError('Password must be at least 8 characters'); return; }
+    if (pw !== pw2) { this._showError('Passwords do not match'); return; }
+
+    const btn = document.getElementById('btn-setup-password-set');
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/password/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+        credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to set password');
+      }
+      this._done();
+    } catch (err) {
+      btn.disabled = false;
+      this._showError(err.message);
+    }
+  },
+
   _done() {
     document.getElementById('setup-step-totp').classList.add('hidden');
+    document.getElementById('setup-step-password').classList.add('hidden');
     document.getElementById('setup-step-done').classList.remove('hidden');
     setTimeout(() => {
       document.getElementById('setup-screen').classList.add('hidden');

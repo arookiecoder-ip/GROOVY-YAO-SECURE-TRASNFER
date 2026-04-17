@@ -150,7 +150,7 @@ function createDecryptStream(fileUuid, saltHex) {
   let ivBuffer = Buffer.alloc(0);
   let ivReady = false;
   let decipher = null;
-  const chunks = [];
+  let windowBuf = Buffer.alloc(0);
 
   const transform = new Transform({
     transform(chunk, _encoding, callback) {
@@ -161,27 +161,39 @@ function createDecryptStream(fileUuid, saltHex) {
           const rest = ivBuffer.subarray(IV_LEN);
           decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
           ivReady = true;
-          if (rest.length > 0) chunks.push(rest);
+          if (rest.length > 0) {
+            windowBuf = Buffer.concat([windowBuf, rest]);
+          }
         }
       } else {
-        chunks.push(chunk);
+        windowBuf = Buffer.concat([windowBuf, chunk]);
+      }
+
+      if (ivReady && windowBuf.length > TAG_LEN) {
+        const toDecryptLen = windowBuf.length - TAG_LEN;
+        const ciphertext = windowBuf.subarray(0, toDecryptLen);
+        windowBuf = windowBuf.subarray(toDecryptLen);
+        
+        try {
+          const plain = decipher.update(ciphertext);
+          if (plain.length > 0) this.push(plain);
+        } catch (err) {
+          return callback(err);
+        }
       }
       callback();
     },
     flush(callback) {
       if (!decipher) return callback(new Error('Stream ended before IV was read'));
 
-      // Last TAG_LEN bytes are the GCM auth tag
-      const allData = Buffer.concat(chunks);
-      if (allData.length < TAG_LEN) return callback(new Error('Ciphertext too short'));
+      if (windowBuf.length !== TAG_LEN) {
+         return callback(new Error('Ciphertext stream too short or corrupted'));
+      }
 
-      const ciphertext = allData.subarray(0, allData.length - TAG_LEN);
-      const tag = allData.subarray(allData.length - TAG_LEN);
-
-      decipher.setAuthTag(tag);
+      decipher.setAuthTag(windowBuf);
       try {
-        const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-        this.push(plain);
+        const plain = decipher.final();
+        if (plain.length > 0) this.push(plain);
         callback();
       } catch (err) {
         callback(err);

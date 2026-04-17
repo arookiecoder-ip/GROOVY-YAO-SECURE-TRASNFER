@@ -11,6 +11,9 @@
   <link rel="stylesheet" href="/css/main.css" />
   <link rel="stylesheet" href="/css/animations.css" />
   <link rel="stylesheet" href="/css/components.css" />
+  <script>
+    (function(){var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');})();
+  </script>
 </head>
 <body class="boot-phase">
 
@@ -36,9 +39,9 @@
           <span>AUTHENTICATE WITH PASSKEY</span>
         </button>
         <div class="auth-divider"><span>OR</span></div>
-        <div class="totp-group">
-          <label for="totp-input" class="field-label">// ENTER TOTP CODE</label>
-          <div class="totp-input-row">
+        <div class="combo-group">
+          <div class="combo-label">// TOTP + PASSWORD</div>
+          <div class="combo-fields">
             <input
               id="totp-input"
               type="text"
@@ -48,11 +51,23 @@
               autocomplete="one-time-code"
               class="input input-totp"
               placeholder="000000"
-              aria-label="TOTP verification code"
+              aria-label="TOTP code"
             />
-            <button id="btn-totp" class="btn btn-secondary" type="button">VERIFY</button>
+            <input
+              id="password-input"
+              type="password"
+              autocomplete="current-password"
+              class="input"
+              placeholder="Password"
+              aria-label="Login password"
+            />
           </div>
+          <button id="btn-combo" class="btn btn-secondary" style="width:100%;margin-top:6px" type="button">LOGIN</button>
         </div>
+        <label class="remember-label" style="margin-top:10px">
+          <input type="checkbox" id="remember-device" />
+          <span>Remember this device for 30 days</span>
+        </label>
       </div>
       <div id="auth-error" class="auth-error hidden" role="alert"></div>
     </div>
@@ -89,7 +104,22 @@
         <div id="setup-totp-status" class="setup-status"></div>
       </div>
 
-      <!-- Step 3: done -->
+      <!-- Step 3: password -->
+      <div id="setup-step-password" class="setup-step hidden">
+        <p class="setup-desc">Set a login password for access from any device (minimum 8 characters).</p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px">
+          <input id="setup-password-input" type="password" autocomplete="new-password"
+            class="input" placeholder="Password (min 8 chars)" />
+          <input id="setup-password-confirm" type="password" autocomplete="new-password"
+            class="input" placeholder="Confirm password" />
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="btn-setup-password-set" class="btn btn-primary" style="flex:1" type="button">SET PASSWORD</button>
+          <button id="btn-setup-skip-password" class="btn btn-ghost" style="flex:1" type="button">SKIP</button>
+        </div>
+      </div>
+
+      <!-- Step 4: done -->
       <div id="setup-step-done" class="setup-step hidden">
         <p class="setup-desc" style="color:var(--color-green);text-align:center">
           ✓ SETUP COMPLETE — ENTERING SYSTEM
@@ -111,6 +141,7 @@
       </nav>
       <div class="header-status">
         <span id="ws-status" class="ws-dot ws-disconnected" title="WebSocket"></span>
+        <button id="btn-theme" class="btn btn-ghost btn-sm" title="Toggle light/dark mode"></button>
         <button id="btn-logout" class="btn btn-ghost btn-sm">LOGOUT</button>
       </div>
     </header>
@@ -122,6 +153,17 @@
           <div class="drop-icon">⬡</div>
           <div class="drop-text">DROP FILES HERE</div>
           <div class="drop-sub">or click to browse — paste works too</div>
+          <div class="expiry-picker" id="expiry-picker">
+            <span class="expiry-label">EXPIRES:</span>
+            <div class="expiry-picker-grid">
+              <button class="expiry-opt active" data-expires="1h">1 Hour</button>
+              <button class="expiry-opt" data-expires="6h">6 Hours</button>
+              <button class="expiry-opt" data-expires="24h">24 Hours</button>
+              <button class="expiry-opt" data-expires="7d">7 Days</button>
+              <button class="expiry-opt" data-expires="30d">30 Days</button>
+              <button class="expiry-opt" data-expires="never">Never</button>
+            </div>
+          </div>
         </div>
         <input type="file" id="file-input" multiple class="file-input-hidden" aria-hidden="true" tabindex="-1" />
       </div>
@@ -131,8 +173,8 @@
 
       <!-- Views -->
       <div id="view-files" class="view active"></div>
-      <div id="view-history" class="view hidden"></div>
-      <div id="view-stats" class="view hidden"></div>
+      <div id="view-history" class="view"></div>
+      <div id="view-stats" class="view"></div>
     </main>
   </div>
 
@@ -150,12 +192,25 @@
   </div>
 
   <!-- Footer -->
+  <div id="confirm-modal" class="confirm-overlay hidden">
+    <div class="confirm-box">
+      <p id="confirm-message" class="confirm-msg"></p>
+      <div class="confirm-actions">
+        <button id="confirm-cancel" class="btn btn-ghost btn-sm">Cancel</button>
+        <button id="confirm-ok" class="btn btn-danger btn-sm">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <footer class="app-footer">
     <span class="footer-brand">GROOVY YAO</span>
     <span class="footer-sep">//</span>
     <span class="footer-version" id="footer-version">v1.0.0</span>
     <span class="footer-sep">//</span>
-    <a href="https://github.com/arookiecoder-ip" target="_blank" rel="noopener" class="footer-link">github.com/arookiecoder-ip</a>
+    <a href="https://github.com/arookiecoder-ip" target="_blank" rel="noopener" class="footer-link">
+      <svg class="footer-gh-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      arookiecoder-ip
+    </a>
   </footer>
 
   <script src="/js/utils.js"></script>
