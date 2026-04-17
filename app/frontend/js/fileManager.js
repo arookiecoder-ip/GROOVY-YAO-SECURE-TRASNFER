@@ -69,13 +69,14 @@ const FileManagerModule = {
 
     if (this._view === 'list') {
       content.innerHTML = `
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <table class="file-list">
           <thead>
             <tr>
               <th>NAME</th>
               <th>SIZE</th>
-              <th>EXPIRES</th>
-              <th>DL</th>
+              <th class="col-expiry">EXPIRES</th>
+              <th class="col-downloads">DL</th>
               <th>ACTIONS</th>
             </tr>
           </thead>
@@ -83,6 +84,7 @@ const FileManagerModule = {
             ${this._files.map((f) => this._listRow(f)).join('')}
           </tbody>
         </table>
+        </div>
       `;
     } else {
       content.innerHTML = `<div class="file-grid">${this._files.map((f) => this._gridCard(f)).join('')}</div>`;
@@ -98,8 +100,8 @@ const FileManagerModule = {
       <tr>
         <td><span class="file-name" title="${Utils.escape(f.name)}">${Utils.escape(f.name)}</span></td>
         <td class="file-size">${Utils.formatBytes(f.size_bytes)}</td>
-        <td class="file-expiry ${cls}" data-expires="${f.expires_at || ''}">${Utils.formatExpiry(f.expires_at)}</td>
-        <td class="file-size">${f.download_count}</td>
+        <td class="file-expiry col-expiry ${cls}" data-expires="${f.expires_at || ''}">${Utils.formatExpiry(f.expires_at)}</td>
+        <td class="file-size col-downloads">${f.download_count}</td>
         <td class="file-actions">
           <button class="btn btn-ghost btn-sm" data-action="download" data-id="${f.id}">DL</button>
           <button class="btn btn-ghost btn-sm" data-action="qr"       data-id="${f.id}">QR</button>

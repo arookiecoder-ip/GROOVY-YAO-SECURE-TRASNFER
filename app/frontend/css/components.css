@@ -181,3 +181,31 @@
 .empty-state { text-align: center; padding: 48px 24px; color: var(--color-text-dim); }
 .empty-state-icon { font-size: 2rem; margin-bottom: 12px; }
 .empty-state-text { font-size: 0.85rem; letter-spacing: 0.08em; }
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+  .file-manager-toolbar { flex-wrap: wrap; gap: 8px; }
+  .file-manager-toolbar .sort-group { margin-left: 0; }
+
+  /* Scrollable table wrapper — set by JS, but also make table itself scroll */
+  .file-list { font-size: 0.72rem; }
+  .file-list th, .file-list td { padding: 8px 6px; }
+  .file-name { max-width: 130px; }
+  .file-actions { gap: 4px; }
+  .file-actions .btn { padding: 4px 8px; font-size: 0.65rem; }
+
+  /* Hide less-important columns on small screens */
+  .file-list .col-expiry,
+  .file-list .col-downloads { display: none; }
+
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .stat-value { font-size: 1.2rem; }
+
+  .history-table { font-size: 0.7rem; }
+  .history-table th, .history-table td { padding: 6px 6px; }
+
+  .upload-item-name { max-width: 50%; }
+
+  .totp-input-row { flex-direction: column; }
+  .totp-input-row .btn { width: 100%; }
+}
