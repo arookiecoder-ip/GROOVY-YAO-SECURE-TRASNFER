@@ -1,0 +1,146 @@
+/* ── Glitch ── */
+@keyframes glitch-clip-1 {
+  0%, 100% { clip-path: inset(0 0 98% 0); transform: translate(-2px, 0); }
+  20%       { clip-path: inset(20% 0 60% 0); transform: translate(2px, 0); }
+  40%       { clip-path: inset(50% 0 30% 0); transform: translate(-1px, 0); }
+  60%       { clip-path: inset(80% 0 5%  0); transform: translate(3px, 0); }
+  80%       { clip-path: inset(10% 0 85% 0); transform: translate(-2px, 0); }
+}
+
+@keyframes glitch-clip-2 {
+  0%, 100% { clip-path: inset(95% 0 0 0); transform: translate(2px, 0); }
+  20%       { clip-path: inset(40% 0 50% 0); transform: translate(-2px, 0); }
+  40%       { clip-path: inset(70% 0 20% 0); transform: translate(1px, 0); }
+  60%       { clip-path: inset(15% 0 70% 0); transform: translate(-3px, 0); }
+  80%       { clip-path: inset(55% 0 35% 0); transform: translate(2px, 0); }
+}
+
+.glitch {
+  position: relative;
+}
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.glitch::before {
+  color: var(--color-magenta);
+  animation: glitch-clip-1 3s infinite linear;
+  opacity: 0.6;
+}
+.glitch::after {
+  color: var(--color-cyan);
+  animation: glitch-clip-2 3s infinite linear;
+  animation-delay: 0.1s;
+  opacity: 0.6;
+}
+
+/* ── Glitch flash (upload complete) ── */
+@keyframes glitch-flash {
+  0%   { opacity: 1; filter: none; }
+  10%  { opacity: 0.8; filter: hue-rotate(90deg) brightness(1.5); transform: translate(2px, -1px); }
+  20%  { opacity: 1; filter: none; transform: translate(-2px, 1px); }
+  30%  { filter: hue-rotate(180deg) brightness(2); transform: translate(1px, 0); }
+  40%  { opacity: 1; filter: none; transform: none; }
+  50%  { filter: hue-rotate(270deg); transform: translate(-1px, 1px); }
+  60%  { opacity: 1; filter: none; transform: none; }
+  100% { opacity: 1; filter: none; }
+}
+
+.glitch-flash { animation: glitch-flash 0.4s ease; }
+
+/* ── Neon pulse (drop zone hover) ── */
+@keyframes neon-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(0, 245, 255, 0.3), inset 0 0 20px rgba(0, 245, 255, 0.03); }
+  50%       { box-shadow: 0 0 24px rgba(0, 245, 255, 0.6), inset 0 0 40px rgba(0, 245, 255, 0.08); }
+}
+
+.neon-pulse { animation: neon-pulse 1.2s ease-in-out infinite; }
+
+/* ── Scanline texture overlay ── */
+.scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Progress bar ── */
+@keyframes progress-glow {
+  0%, 100% { box-shadow: 0 0 6px var(--color-cyan), 0 0 12px rgba(0, 245, 255, 0.4); }
+  50%       { box-shadow: 0 0 12px var(--color-cyan), 0 0 24px rgba(0, 245, 255, 0.7); }
+}
+
+@keyframes scanline-travel {
+  0%   { background-position: 0 0; }
+  100% { background-position: 0 100%; }
+}
+
+.progress-fill {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-cyan);
+  animation: progress-glow 1.5s ease-in-out infinite;
+}
+
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0px,
+    transparent 8px,
+    rgba(0, 0, 0, 0.2) 8px,
+    rgba(0, 0, 0, 0.2) 10px
+  );
+  animation: scanline-travel 2s linear infinite;
+}
+
+/* ── Toast entrance ── */
+@keyframes toast-in {
+  0%   { opacity: 0; transform: translateX(100%) scaleX(0.8); filter: hue-rotate(90deg); }
+  60%  { transform: translateX(-4px) scaleX(1.01); filter: hue-rotate(10deg); }
+  100% { opacity: 1; transform: translateX(0) scaleX(1); filter: none; }
+}
+
+@keyframes toast-out {
+  0%   { opacity: 1; transform: translateX(0); max-height: 120px; }
+  100% { opacity: 0; transform: translateX(100%); max-height: 0; margin-bottom: 0; }
+}
+
+.toast-enter { animation: toast-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.toast-exit  { animation: toast-out 0.25s ease-in forwards; }
+
+/* ── Boot logo reveal ── */
+@keyframes logo-reveal {
+  0%   { opacity: 0; letter-spacing: 0.6em; filter: blur(8px); }
+  60%  { filter: blur(2px); }
+  100% { opacity: 1; letter-spacing: 0.2em; filter: blur(0); }
+}
+
+.boot-logo-visible { animation: logo-reveal 0.8s ease-out forwards; }
+
+/* ── Flicker ── */
+@keyframes flicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+  20%, 22%, 24%, 55% { opacity: 0.4; }
+}
+.flicker { animation: flicker 4s linear infinite; }
+
+/* ── Expiry countdown colors (applied via JS) ── */
+.expiry-warning { color: var(--color-yellow) !important; }
+.expiry-critical { color: var(--color-red) !important; animation: flicker 2s linear infinite; }
+
+/* ── Button press ── */
+.btn:active:not(:disabled) { transform: scale(0.97); }

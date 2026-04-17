@@ -1,0 +1,46 @@
+{
+  "name": "groovy-yao",
+  "version": "0.1.0",
+  "description": "Personal secure real-time file transfer system",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "migrate": "node src/db/migrate.js",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "build": "esbuild frontend/js/app.js --bundle --outfile=frontend/dist/app.bundle.js --minify"
+  },
+  "dependencies": {
+    "fastify": "^4",
+    "@fastify/helmet": "^11",
+    "@fastify/rate-limit": "^9",
+    "@fastify/cookie": "^9",
+    "@fastify/multipart": "^8",
+    "@fastify/static": "^7",
+    "@fastify/websocket": "^10",
+    "better-sqlite3": "^9",
+    "@simplewebauthn/server": "^10",
+    "otplib": "^12",
+    "qrcode": "^1.5",
+    "archiver": "^7",
+    "file-type": "^19",
+    "node-cron": "^3",
+    "jose": "^5",
+    "uuid": "^9"
+  },
+  "devDependencies": {
+    "vitest": "^1",
+    "@playwright/test": "^1",
+    "supertest": "^6",
+    "typescript": "^5",
+    "esbuild": "^0.20",
+    "@types/node": "^20",
+    "@types/better-sqlite3": "^7",
+    "@types/archiver": "^6"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

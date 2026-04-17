@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+app/node_modules/
+
+# Environment
+.env
+app/.env
+*.env.local
+
+# Database
+app/data/db/*.db
+app/data/db/*.db-shm
+app/data/db/*.db-wal
+
+# Uploaded files
+app/data/uploads/
+
+# Build output
+app/frontend/dist/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+.docker/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Playwright
+test-results/
+playwright-report/

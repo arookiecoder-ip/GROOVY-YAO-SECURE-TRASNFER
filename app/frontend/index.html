@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>GROOVY YAO // SECURE TRANSFER</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/main.css" />
+  <link rel="stylesheet" href="/css/animations.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body class="boot-phase">
+
+  <!-- Boot / Auth screen -->
+  <div id="boot-screen" class="boot-screen" aria-live="polite">
+    <div class="boot-matrix" id="boot-matrix" aria-hidden="true"></div>
+    <div class="boot-logo" id="boot-logo">
+      <div class="logo-text glitch" data-text="GROOVY YAO">GROOVY YAO</div>
+      <div class="logo-sub">// SECURE FILE TRANSFER v1.0.0</div>
+    </div>
+  </div>
+
+  <!-- Auth screen -->
+  <div id="auth-screen" class="auth-screen hidden">
+    <div class="auth-card">
+      <div class="auth-header">
+        <span class="auth-title">// AUTHENTICATION REQUIRED</span>
+        <span class="auth-subtitle">IDENTIFY YOURSELF, OPERATOR</span>
+      </div>
+      <div class="auth-methods">
+        <button id="btn-passkey" class="btn btn-primary btn-passkey" type="button">
+          <span class="btn-icon">⬡</span>
+          <span>AUTHENTICATE WITH PASSKEY</span>
+        </button>
+        <div class="auth-divider"><span>OR</span></div>
+        <div class="totp-group">
+          <label for="totp-input" class="field-label">// ENTER TOTP CODE</label>
+          <div class="totp-input-row">
+            <input
+              id="totp-input"
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]{6}"
+              maxlength="6"
+              autocomplete="one-time-code"
+              class="input input-totp"
+              placeholder="000000"
+              aria-label="TOTP verification code"
+            />
+            <button id="btn-totp" class="btn btn-secondary" type="button">VERIFY</button>
+          </div>
+        </div>
+      </div>
+      <div id="auth-error" class="auth-error hidden" role="alert"></div>
+    </div>
+  </div>
+
+  <!-- First-run setup wizard -->
+  <div id="setup-screen" class="auth-screen hidden">
+    <div class="auth-card" style="max-width:480px">
+      <div class="auth-header">
+        <span class="auth-title">// FIRST RUN — SETUP REQUIRED</span>
+        <span class="auth-subtitle">REGISTER YOUR CREDENTIALS, OPERATOR</span>
+      </div>
+
+      <!-- Step 1: passkey -->
+      <div id="setup-step-passkey" class="setup-step">
+        <p class="setup-desc">Register a passkey (fingerprint / Windows Hello / security key). This is your primary login method.</p>
+        <button id="btn-setup-passkey" class="btn btn-primary btn-passkey" type="button">
+          <span class="btn-icon">⬡</span>
+          <span>REGISTER PASSKEY</span>
+        </button>
+        <div id="setup-passkey-status" class="setup-status"></div>
+        <button id="btn-setup-skip-passkey" class="btn btn-ghost" style="margin-top:8px;width:100%" type="button">SKIP — USE TOTP ONLY</button>
+      </div>
+
+      <!-- Step 2: TOTP -->
+      <div id="setup-step-totp" class="setup-step hidden">
+        <p class="setup-desc">Scan this QR code with Google Authenticator or Authy, then confirm with a code.</p>
+        <div id="setup-qr" style="text-align:center;margin:16px 0"></div>
+        <div class="totp-input-row">
+          <input id="setup-totp-input" type="text" inputmode="numeric" maxlength="6"
+            class="input input-totp" placeholder="000000" autocomplete="one-time-code" />
+          <button id="btn-setup-totp-confirm" class="btn btn-secondary" type="button">CONFIRM</button>
+        </div>
+        <div id="setup-totp-status" class="setup-status"></div>
+      </div>
+
+      <!-- Step 3: done -->
+      <div id="setup-step-done" class="setup-step hidden">
+        <p class="setup-desc" style="color:var(--color-green);text-align:center">
+          ✓ SETUP COMPLETE — ENTERING SYSTEM
+        </p>
+      </div>
+
+      <div id="setup-error" class="auth-error hidden" role="alert"></div>
+    </div>
+  </div>
+
+  <!-- Main app (shown after auth) -->
+  <div id="app" class="app hidden">
+    <header class="app-header">
+      <div class="header-logo">GROOVY YAO</div>
+      <nav class="header-nav">
+        <button class="nav-btn active" data-view="files">FILES</button>
+        <button class="nav-btn" data-view="history">HISTORY</button>
+        <button class="nav-btn" data-view="stats">STATS</button>
+      </nav>
+      <div class="header-status">
+        <span id="ws-status" class="ws-dot ws-disconnected" title="WebSocket"></span>
+        <button id="btn-logout" class="btn btn-ghost btn-sm">LOGOUT</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <!-- Drop zone -->
+      <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop files here or click to upload">
+        <div class="drop-zone-inner">
+          <div class="drop-icon">⬡</div>
+          <div class="drop-text">DROP FILES HERE</div>
+          <div class="drop-sub">or click to browse — paste works too</div>
+        </div>
+        <input type="file" id="file-input" multiple class="file-input-hidden" aria-hidden="true" tabindex="-1" />
+      </div>
+
+      <!-- Upload queue -->
+      <div id="upload-queue" class="upload-queue hidden"></div>
+
+      <!-- Views -->
+      <div id="view-files" class="view active"></div>
+      <div id="view-history" class="view hidden"></div>
+      <div id="view-stats" class="view hidden"></div>
+    </main>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toast-container" class="toast-container" aria-live="assertive" aria-atomic="true"></div>
+
+  <!-- QR overlay -->
+  <div id="qr-overlay" class="qr-overlay hidden" role="dialog" aria-modal="true" aria-label="QR Code">
+    <div class="qr-card">
+      <div class="qr-header">// SCAN TO DOWNLOAD</div>
+      <div id="qr-image" class="qr-image"></div>
+      <div id="qr-url" class="qr-url"></div>
+      <button id="qr-close" class="btn btn-ghost">CLOSE</button>
+    </div>
+  </div>
+
+  <script src="/js/utils.js"></script>
+  <script src="/js/websocket.js"></script>
+  <script src="/js/notifications.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/setup.js"></script>
+  <script src="/js/progress.js"></script>
+  <script src="/js/upload.js"></script>
+  <script src="/js/fileManager.js"></script>
+  <script src="/js/qr.js"></script>
+  <script src="/js/history.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
