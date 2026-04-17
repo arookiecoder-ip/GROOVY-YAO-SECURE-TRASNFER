@@ -498,4 +498,13 @@ html, body {
 
   .toast-container { top: 12px; bottom: auto; right: 12px; left: 12px; max-width: none; }
   .qr-card { padding: 20px 16px; }
+
+  /* Expiry picker: 3-column grid on mobile */
+  .expiry-picker { margin-top: 12px; }
+  .expiry-picker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; }
+  .expiry-opt { width: 100%; font-size: 0.75rem; padding: 6px 0; }
+
+  /* Combo login: stack TOTP + password vertically */
+  .combo-fields { flex-direction: column; gap: 8px; }
+  .combo-fields .input-totp { width: 100%; font-size: 1.2rem; }
 }
