@@ -121,6 +121,8 @@
   }
 
   function showApp() {
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('setup-screen').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     if (typeof AppMain !== 'undefined') AppMain.init();
   }
