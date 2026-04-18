@@ -58,27 +58,46 @@ const UploadManager = {
   async _simpleUpload(file) {
     const progressId = `simple-${Date.now()}`;
     Progress.create(progressId, file.name, file.size);
-    try {
+    const item = Progress._items.get(progressId);
+
+    return new Promise((resolve) => {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('expires', this._selectedExpiry);
 
-      const res = await fetch('/api/upload/simple', {
-        method: 'POST',
-        body: fd,
-        credentials: 'same-origin',
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Upload failed');
-      }
-      const data = await res.json();
-      Progress.complete(progressId);
-      this._onComplete(data);
-    } catch (err) {
-      Progress.error(progressId, err.message);
-      Notifications.error('Upload failed', err.message);
-    }
+      const xhr = new XMLHttpRequest();
+      xhr.withCredentials = true;
+      xhr.open('POST', '/api/upload/simple');
+
+      xhr.upload.onprogress = (e) => {
+        if (!e.lengthComputable) return;
+        const elapsed = (Date.now() - item.startTime) / 1000;
+        const speedBps = elapsed > 0 ? e.loaded / elapsed : 0;
+        const percent = (e.loaded / e.total) * 100;
+        Progress.update(progressId, percent, e.loaded, speedBps);
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const data = JSON.parse(xhr.responseText);
+          Progress.complete(progressId);
+          this._onComplete(data);
+        } else {
+          const err = JSON.parse(xhr.responseText || '{}');
+          Progress.error(progressId, err.error || 'Upload failed');
+          Notifications.error('Upload failed', err.error || 'Upload failed');
+        }
+        resolve();
+      };
+
+      xhr.onerror = () => {
+        Progress.error(progressId, 'Network error');
+        Notifications.error('Upload failed', 'Network error');
+        resolve();
+      };
+
+      xhr.send(fd);
+    });
   },
 
   // ── Chunked upload ─────────────────────────────────────────────────────
