@@ -4,6 +4,7 @@ const FileManagerModule = {
   _view: localStorage.getItem('fm-view') || 'list',
   _sort: localStorage.getItem('fm-sort') || 'date',
   _expiryInterval: null,
+  _actionsAbort: null,
 
   init() {
     this._render();
@@ -93,10 +94,7 @@ const FileManagerModule = {
       content.innerHTML = `<div class="file-grid">${this._files.map((f) => this._gridCard(f)).join('')}</div>`;
     }
 
-    if (!content._actionsbound) {
-      this._bindActions(content);
-      content._actionsbound = true;
-    }
+    this._bindActions(content);
     this._startExpiryCountdown(content);
   },
 
@@ -143,10 +141,14 @@ const FileManagerModule = {
   },
 
   _bindActions(root) {
+    if (this._actionsAbort) this._actionsAbort.abort();
+    this._actionsAbort = new AbortController();
+    const sig = { signal: this._actionsAbort.signal };
+
     root.addEventListener('mousedown', (e) => {
       const btn = e.target.closest('[data-action="visibility"]');
       if (btn) e.preventDefault();
-    });
+    }, sig);
     root.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
@@ -165,7 +167,7 @@ const FileManagerModule = {
         if (!await Utils.confirm('Delete this file?', 'Delete')) return;
         await this._deleteFile(id);
       }
-    });
+    }, sig);
   },
 
   async _toggleVisibility(id, currentlyPublic) {
