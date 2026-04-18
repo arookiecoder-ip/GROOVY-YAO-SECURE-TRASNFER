@@ -144,7 +144,8 @@ const UploadManager = {
       const { uploadId, receivedChunks } = await initRes.json();
       const received = new Set(receivedChunks);
 
-      this._active[uploadId] = { file, totalChunks, progressId, aborted: false };
+      this._active[uploadId] = { file, totalChunks, progressId, serverUploadId: uploadId, aborted: false };
+      this._active[progressId] = this._active[uploadId];
 
       // 2. Upload missing chunks — sliding window with live per-chunk XHR progress
       const pending = [];
@@ -190,6 +191,7 @@ const UploadManager = {
       const data = await finRes.json();
 
       delete this._active[uploadId];
+      delete this._active[progressId];
       this._removePending(uploadId);
       Progress.complete(progressId);
       this._onComplete(data);
@@ -310,15 +312,17 @@ const UploadManager = {
     const state = this._active[uploadId];
     if (!state) return;
     state.aborted = true;
+    const serverUploadId = state.serverUploadId || uploadId;
     if (state.xhr) {
       state.xhr.abort();
     } else {
       if (state._lastXhr) state._lastXhr.abort();
-      fetch(`/api/upload/chunked/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' })
+      fetch(`/api/upload/chunked/${serverUploadId}`, { method: 'DELETE', credentials: 'same-origin' })
         .catch(() => {});
     }
-    delete this._active[uploadId];
-    this._removePending(uploadId);
+    delete this._active[serverUploadId];
+    delete this._active[state.progressId];
+    this._removePending(serverUploadId);
   },
 
   _onComplete(data) {
