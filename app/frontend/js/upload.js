@@ -1,8 +1,8 @@
-// UploadManager — simple (<10MB) + chunked (>=10MB) with SHA-256, 3-retry backoff, resume
+// UploadManager — simple (<=50MB) + chunked (>50MB) with SHA-256, 3-retry backoff, resume
 const UploadManager = {
-  CHUNK_SIZE: 20 * 1024 * 1024,
+  CHUNK_SIZE: 64 * 1024 * 1024,
   MAX_RETRIES: 3,
-  PARALLEL: 4,
+  PARALLEL: 3,
 
   // uploadId -> { file, totalChunks, chunkShas, aborted }
   _active: {},
@@ -54,7 +54,7 @@ const UploadManager = {
   },
 
   async upload(file) {
-    if (file.size < 500 * 1024 * 1024) {
+    if (file.size <= 50 * 1024 * 1024) {
       await this._simpleUpload(file);
     } else {
       await this._chunkedUpload(file);
@@ -146,23 +146,37 @@ const UploadManager = {
 
       this._active[uploadId] = { file, totalChunks, progressId, aborted: false };
 
-      // 2. Upload missing chunks in parallel
+      // 2. Upload missing chunks — sliding window with live per-chunk XHR progress
       const pending = [];
+      const chunkProgress = new Array(totalChunks).fill(0);
+      const startTime = Date.now();
+
       for (let i = 0; i < totalChunks; i++) {
-        if (received.has(i)) { Progress.advance(progressId, this._chunkSize(file, i)); continue; }
+        if (received.has(i)) { chunkProgress[i] = this._chunkSize(file, i); continue; }
         pending.push(i);
       }
 
-      for (let i = 0; i < pending.length; i += this.PARALLEL) {
-        if (this._active[uploadId]?.aborted) throw new Error('Upload aborted');
-        const batch = pending.slice(i, i + this.PARALLEL);
-        await Promise.all(batch.map(async (idx) => {
+      const onChunkProgress = (idx, loaded) => {
+        chunkProgress[idx] = loaded;
+        const totalLoaded = chunkProgress.reduce((a, b) => a + b, 0);
+        const elapsed = (Date.now() - startTime) / 1000;
+        const speedBps = elapsed > 0.5 ? totalLoaded / elapsed : 0;
+        const percent = Math.min(99, (totalLoaded / file.size) * 100);
+        Progress.update(progressId, percent, totalLoaded, speedBps);
+      };
+
+      let next = 0;
+      const worker = async () => {
+        while (next < pending.length) {
+          if (this._active[uploadId]?.aborted) throw new Error('Upload aborted');
+          const idx = pending[next++];
           const start = idx * this.CHUNK_SIZE;
           const slice = file.slice(start, start + this.CHUNK_SIZE);
-          await this._uploadChunk(uploadId, idx, slice, null);
-          Progress.advance(progressId, slice.size);
-        }));
-      }
+          await this._uploadChunk(uploadId, idx, slice, null, (loaded) => onChunkProgress(idx, loaded));
+          chunkProgress[idx] = slice.size;
+        }
+      };
+      await Promise.all(Array.from({ length: this.PARALLEL }, worker));
 
       // 4. Finalize
       const finRes = await this._fetchWithRetry(`/api/upload/chunked/${uploadId}/finalize`, {
@@ -185,30 +199,31 @@ const UploadManager = {
     }
   },
 
-  async _uploadChunk(uploadId, index, slice, expectedSha) {
+  async _uploadChunk(uploadId, index, slice, expectedSha, onProgress) {
     for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
       try {
-        const fd = new FormData();
-        fd.append('chunk', slice, `chunk-${index}`);
-        const headers = {};
-        if (expectedSha) headers['x-chunk-sha256'] = expectedSha;
+        await new Promise((resolve, reject) => {
+          const fd = new FormData();
+          fd.append('chunk', slice, `chunk-${index}`);
+          const xhr = new XMLHttpRequest();
+          xhr.withCredentials = true;
+          if (expectedSha) xhr.setRequestHeader('x-chunk-sha256', expectedSha);
+          xhr.open('PUT', `/api/upload/chunked/${uploadId}/chunk/${index}`);
+          xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(e.loaded); };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) { resolve(); return; }
+            const e = JSON.parse(xhr.responseText || '{}');
+            reject(Object.assign(new Error(e.error || `Chunk ${index} failed`), { status: xhr.status }));
+          };
+          xhr.onerror = () => reject(new Error('Network error'));
+          xhr.send(fd);
 
-        const res = await fetch(`/api/upload/chunked/${uploadId}/chunk/${index}`, {
-          method: 'PUT',
-          headers,
-          body: fd,
-          credentials: 'same-origin',
+          const state = this._active[uploadId];
+          if (state) state._lastXhr = xhr;
         });
-
-        if (res.ok) return;
-
-        const e = await res.json().catch(() => ({}));
-        if (res.status === 422) throw new Error(e.error || 'Chunk integrity check failed');
-        // 5xx or 429 — retry
-        if (attempt === this.MAX_RETRIES - 1) throw new Error(e.error || `Chunk ${index} failed`);
-
-        await this._backoff(attempt);
+        return;
       } catch (err) {
+        if (err.status === 422) throw err;
         if (attempt === this.MAX_RETRIES - 1) throw err;
         await this._backoff(attempt);
       }
@@ -298,6 +313,7 @@ const UploadManager = {
     if (state.xhr) {
       state.xhr.abort();
     } else {
+      if (state._lastXhr) state._lastXhr.abort();
       fetch(`/api/upload/chunked/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' })
         .catch(() => {});
     }

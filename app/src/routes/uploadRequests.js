@@ -82,7 +82,8 @@ function uploadLandingPage(state, token, nonce) {
                     await chunkedUpload(file, row);
                   }
                 } catch(err) {
-                  setRowError(row, err.message || 'Upload failed');
+                  if (err.name === 'AbortError') setRowCancelled(row);
+                  else setRowError(row, err.message || 'Upload failed');
                 } finally {
                   activeUploads--;
                 }
@@ -93,10 +94,14 @@ function uploadLandingPage(state, token, nonce) {
               const row = document.createElement('div');
               row.className = 'file-row';
               row.innerHTML =
-                '<div class="fr-name">' + escHtml(name) + '</div>' +
+                '<div class="fr-header"><span class="fr-name">' + escHtml(name) + '</span><button class="fr-cancel" title="Cancel">✕</button></div>' +
                 '<div class="fr-track"><div class="fr-bar"></div></div>' +
                 '<div class="fr-meta"><span class="fr-status">waiting…</span><span class="fr-speed"></span></div>';
               fileList.appendChild(row);
+              row._abortController = new AbortController();
+              row.querySelector('.fr-cancel').addEventListener('click', () => {
+                row._abortController.abort();
+              });
               return row;
             }
 
@@ -125,6 +130,7 @@ function uploadLandingPage(state, token, nonce) {
             }
 
             function setRowDone(row) {
+              row.querySelector('.fr-cancel').style.display = 'none';
               row.querySelector('.fr-bar').style.width = '100%';
               row.querySelector('.fr-bar').style.background = '#00ff88';
               row.querySelector('.fr-status').textContent = '✓ done';
@@ -132,7 +138,16 @@ function uploadLandingPage(state, token, nonce) {
               row.querySelector('.fr-speed').textContent = '';
             }
 
+            function setRowCancelled(row) {
+              row.querySelector('.fr-cancel').style.display = 'none';
+              row.querySelector('.fr-bar').style.background = '#ff9900';
+              row.querySelector('.fr-status').textContent = '— cancelled';
+              row.querySelector('.fr-status').style.color = '#ff9900';
+              row.querySelector('.fr-speed').textContent = '';
+            }
+
             function setRowError(row, msg) {
+              row.querySelector('.fr-cancel').style.display = 'none';
               row.querySelector('.fr-bar').style.background = '#ff4444';
               row.querySelector('.fr-status').textContent = '✗ ' + msg;
               row.querySelector('.fr-status').style.color = '#ff4444';
@@ -145,6 +160,7 @@ function uploadLandingPage(state, token, nonce) {
                 const fd = new FormData();
                 fd.append('file', file);
                 const xhr = new XMLHttpRequest();
+                row._abortController.signal.addEventListener('abort', () => { xhr.abort(); reject(new DOMException('Cancelled', 'AbortError')); });
                 xhr.open('POST', '/api/u/' + token + '/upload');
                 xhr.upload.onprogress = e => {
                   if (e.lengthComputable) setRowProgress(row, Math.round(e.loaded / e.total * 100), e.loaded, e.total, startTime);
@@ -189,12 +205,14 @@ function uploadLandingPage(state, token, nonce) {
               }
 
               async function uploadChunk(i) {
+                if (row._abortController.signal.aborted) throw new DOMException('Cancelled', 'AbortError');
                 const start = i * CHUNK;
                 const slice = file.slice(start, start + CHUNK);
                 await new Promise((resolve, reject) => {
                   const fd = new FormData();
                   fd.append('chunk', slice, 'chunk-' + i);
                   const xhr = new XMLHttpRequest();
+                  row._abortController.signal.addEventListener('abort', () => { xhr.abort(); reject(new DOMException('Cancelled', 'AbortError')); });
                   xhr.open('PUT', '/api/u/' + token + '/chunked/' + uploadId + '/chunk/' + i);
                   xhr.upload.onprogress = e => { if (e.lengthComputable) onChunkProgress(i, e.loaded); };
                   xhr.onload = () => {
@@ -252,6 +270,7 @@ function uploadLandingPage(state, token, nonce) {
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>GROOVY YAO // ${s.title}</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 30,9 30,23 16,30 2,23 2,9' fill='%23050a0e' stroke='%2300f5ff' stroke-width='2'/%3E%3Cpolygon points='16,8 24,12 24,20 16,24 8,20 8,12' fill='%2300f5ff' opacity='0.3'/%3E%3C/svg%3E"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"/>
   <style>
@@ -268,7 +287,10 @@ function uploadLandingPage(state, token, nonce) {
     .fi-hidden{display:none}
     #file-list{margin-top:16px;display:flex;flex-direction:column;gap:10px}
     .file-row{padding:10px 0;border-bottom:1px solid #00f5ff11}
-    .fr-name{font-size:.8rem;color:#ccc;margin-bottom:6px;word-break:break-all}
+    .fr-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;gap:8px}
+    .fr-name{font-size:.8rem;color:#ccc;word-break:break-all;flex:1}
+    .fr-cancel{background:none;border:1px solid #ff444466;color:#ff4444;font-size:.65rem;cursor:pointer;padding:1px 5px;border-radius:2px;flex-shrink:0;transition:background .15s}
+    .fr-cancel:hover{background:#ff44441a}
     .fr-track{height:4px;background:#00f5ff22;border-radius:2px;overflow:hidden;margin-bottom:4px}
     .fr-bar{height:100%;background:#00f5ff;width:0;transition:width .15s}
     .fr-meta{display:flex;justify-content:space-between;align-items:center}
