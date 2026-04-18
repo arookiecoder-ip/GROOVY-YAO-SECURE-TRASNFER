@@ -465,7 +465,13 @@ async function filesRoutes(fastify) {
 
     let disk = null;
     try {
-      const stat = fs.statfsSync(config.storagePath);
+      let statPath = path.resolve(config.storagePath);
+      while (statPath && !fs.existsSync(statPath)) {
+        const parent = path.dirname(statPath);
+        if (parent === statPath) break;
+        statPath = parent;
+      }
+      const stat = fs.statfsSync(statPath);
       const total = stat.blocks * stat.bsize;
       const free = stat.bfree * stat.bsize;
       disk = { total, free, used: total - free };

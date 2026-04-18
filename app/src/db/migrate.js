@@ -73,11 +73,18 @@ function migrate() {
     `);
     console.log('[migrate] Created upload_requests table');
   } else {
-    // Add pending_upload_id column if missing (for existing DBs)
     const urCols = db.prepare("PRAGMA table_info(upload_requests)").all().map(c => c.name);
     if (!urCols.includes('pending_upload_id')) {
       db.exec('ALTER TABLE upload_requests ADD COLUMN pending_upload_id TEXT');
       console.log('[migrate] Added pending_upload_id column to upload_requests');
+    }
+    if (!urCols.includes('max_uses')) {
+      db.exec('ALTER TABLE upload_requests ADD COLUMN max_uses INTEGER DEFAULT 1');
+      console.log('[migrate] Added max_uses column to upload_requests');
+    }
+    if (!urCols.includes('use_count')) {
+      db.exec('ALTER TABLE upload_requests ADD COLUMN use_count INTEGER DEFAULT 0');
+      console.log('[migrate] Added use_count column to upload_requests');
     }
   }
 

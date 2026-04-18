@@ -152,7 +152,39 @@
         <button id="btn-create-upload-link" class="btn btn-ghost btn-sm" title="Generate a one-time upload link for anyone">⬆ UPLOAD LINK</button>
         <button id="btn-logout" class="btn btn-ghost btn-sm">LOGOUT</button>
       </div>
+      <button id="btn-hamburger" class="btn-hamburger" aria-label="Open menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
     </header>
+
+    <!-- Mobile drawer -->
+    <div id="mobile-drawer" class="mobile-drawer" aria-hidden="true">
+      <div class="drawer-content">
+        <div class="drawer-header">
+          <span class="drawer-title">// MENU</span>
+          <button id="btn-drawer-close" class="drawer-close" aria-label="Close menu">✕</button>
+        </div>
+        <div class="drawer-nav">
+          <button class="drawer-nav-btn active" data-view="files">FILES</button>
+          <button class="drawer-nav-btn" data-view="history">HISTORY</button>
+          <button class="drawer-nav-btn" data-view="stats">STATS</button>
+          <button class="drawer-nav-btn" data-view="upload-links">LINK STATUS</button>
+        </div>
+        <div class="drawer-storage" id="drawer-storage" style="display:none">
+          <span class="storage-label">DISK</span>
+          <div class="storage-bar-track" style="width:100%">
+            <div class="storage-bar-fill" id="drawer-storage-bar-fill"></div>
+          </div>
+          <span class="storage-pct" id="drawer-storage-pct"></span>
+        </div>
+        <button id="drawer-btn-upload-link" class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;padding:12px;font-size:0.9rem;color:var(--color-green);border-color:var(--color-green)">⬆ UPLOAD LINK</button>
+        <div class="drawer-actions">
+          <button id="drawer-btn-theme" class="btn btn-ghost btn-sm" title="Toggle light/dark mode"></button>
+          <button id="drawer-btn-logout" class="btn btn-ghost btn-sm">LOGOUT</button>
+        </div>
+      </div>
+    </div>
+    <div id="drawer-backdrop" class="drawer-backdrop"></div>
 
     <main class="app-main">
       <!-- Drop zone -->
@@ -185,6 +217,41 @@
       <div id="view-stats" class="view"></div>
       <div id="view-upload-links" class="view"></div>
     </main>
+  </div>
+
+  <!-- Upload link dialog -->
+  <div id="upload-link-dialog" class="ul-dialog-overlay hidden" role="dialog" aria-modal="true">
+    <div class="ul-dialog-box">
+      <div class="ul-dialog-header">
+        <span class="ul-dialog-title">// CREATE UPLOAD LINK</span>
+        <button id="ul-dialog-close" class="drawer-close" aria-label="Close">✕</button>
+      </div>
+      <div class="ul-dialog-body">
+        <div class="ul-dialog-option" id="ul-opt-single">
+          <div class="ul-opt-icon">①</div>
+          <div class="ul-opt-info">
+            <div class="ul-opt-label">SINGLE USE</div>
+            <div class="ul-opt-desc">Link expires after one upload</div>
+          </div>
+        </div>
+        <div class="ul-dialog-option" id="ul-opt-multi">
+          <div class="ul-opt-icon">∞</div>
+          <div class="ul-opt-info">
+            <div class="ul-opt-label">MULTI USE</div>
+            <div class="ul-opt-desc">Link can be used multiple times</div>
+          </div>
+          <input id="ul-multi-count" class="input ul-multi-input" type="number" min="2" max="1000" value="10" placeholder="Uses" />
+        </div>
+        <div class="ul-dialog-option" id="ul-opt-unlimited">
+          <div class="ul-opt-icon">⬡</div>
+          <div class="ul-opt-info">
+            <div class="ul-opt-label">UNLIMITED</div>
+            <div class="ul-opt-desc">No use limit — active until deactivated</div>
+          </div>
+        </div>
+      </div>
+      <button id="ul-dialog-create" class="btn btn-primary" style="width:100%;margin-top:8px">CREATE &amp; COPY LINK</button>
+    </div>
   </div>
 
   <!-- Toast container -->

@@ -113,17 +113,8 @@ const UploadLinksModule = {
   },
 
   _bindToolbar(el) {
-    el.querySelector('#ul-btn-new')?.addEventListener('click', async () => {
-      try {
-        const res = await fetch('/api/upload-requests', { method: 'POST', credentials: 'same-origin' });
-        if (!res.ok) throw new Error('Failed');
-        const { url } = await res.json();
-        Utils.copyToClipboard(url);
-        Notifications.success('UPLOAD LINK COPIED', url);
-        this.refresh();
-      } catch {
-        Notifications.error('Failed', 'Could not create link');
-      }
+    el.querySelector('#ul-btn-new')?.addEventListener('click', () => {
+      if (typeof AppMain !== 'undefined') AppMain.openUlDialog();
     });
     el.querySelector('#ul-btn-refresh')?.addEventListener('click', () => this.refresh());
   },

@@ -136,6 +136,7 @@
 
   // Main app controller
   window.AppMain = {
+    openUlDialog: null,
     init() {
       Notifications.init();
       WSClient.init();
@@ -170,21 +171,127 @@
         applyTheme(document.documentElement.getAttribute('data-theme') === 'light');
       });
 
-      // Create one-time upload link
-      document.getElementById('btn-create-upload-link').addEventListener('click', async () => {
+      // Upload link dialog
+      const ulDialog = document.getElementById('upload-link-dialog');
+      const ulOpts = ['single', 'multi', 'unlimited'];
+      let ulSelected = 'single';
+
+      function openUlDialog() {
+        ulSelected = 'single';
+        document.getElementById('ul-opt-single').classList.add('selected');
+        document.getElementById('ul-opt-multi').classList.remove('selected');
+        document.getElementById('ul-opt-unlimited').classList.remove('selected');
+        ulDialog.classList.remove('hidden');
+      }
+      function closeUlDialog() { ulDialog.classList.add('hidden'); }
+
+      document.getElementById('ul-dialog-close').addEventListener('click', closeUlDialog);
+      ulDialog.addEventListener('click', (e) => { if (e.target === ulDialog) closeUlDialog(); });
+
+      ['single', 'multi', 'unlimited'].forEach((type) => {
+        document.getElementById(`ul-opt-${type}`).addEventListener('click', () => {
+          ulSelected = type;
+          ['single', 'multi', 'unlimited'].forEach((t) =>
+            document.getElementById(`ul-opt-${t}`).classList.toggle('selected', t === type)
+          );
+        });
+      });
+
+      document.getElementById('ul-dialog-create').addEventListener('click', async () => {
+        let max_uses = 1;
+        if (ulSelected === 'unlimited') max_uses = 0;
+        else if (ulSelected === 'multi') {
+          max_uses = parseInt(document.getElementById('ul-multi-count').value, 10) || 10;
+        }
         try {
-          const res = await fetch('/api/upload-requests', { method: 'POST', credentials: 'same-origin' });
+          const res = await fetch('/api/upload-requests', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ max_uses }),
+          });
           if (!res.ok) throw new Error('Failed to create link');
           const { url } = await res.json();
           Utils.copyToClipboard(url);
           Notifications.success('UPLOAD LINK COPIED', url);
+          closeUlDialog();
+          if (typeof UploadLinksModule !== 'undefined') UploadLinksModule.refresh();
         } catch (err) {
           Notifications.error('Failed', err.message);
         }
       });
 
+      AppMain.openUlDialog = openUlDialog;
+
+      // Create one-time upload link
+      document.getElementById('btn-create-upload-link').addEventListener('click', openUlDialog);
+
       // Logout
       document.getElementById('btn-logout').addEventListener('click', async () => {
+        await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+        location.reload();
+      });
+
+      // Hamburger / mobile drawer
+      const hamburger = document.getElementById('btn-hamburger');
+      const drawer = document.getElementById('mobile-drawer');
+      const backdrop = document.getElementById('drawer-backdrop');
+
+      function openDrawer() {
+        drawer.classList.add('open');
+        backdrop.classList.add('open');
+        hamburger.classList.add('open');
+        hamburger.setAttribute('aria-expanded', 'true');
+        drawer.setAttribute('aria-hidden', 'false');
+      }
+      function closeDrawer() {
+        drawer.classList.remove('open');
+        backdrop.classList.remove('open');
+        hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false');
+        drawer.setAttribute('aria-hidden', 'true');
+      }
+
+      hamburger.addEventListener('click', () => drawer.classList.contains('open') ? closeDrawer() : openDrawer());
+      backdrop.addEventListener('click', closeDrawer);
+      document.getElementById('btn-drawer-close').addEventListener('click', closeDrawer);
+
+      // Drawer nav mirrors main nav
+      document.querySelectorAll('.drawer-nav-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.nav-btn').forEach((b) => b.classList.remove('active'));
+          document.querySelectorAll('.drawer-nav-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          const matchingNav = document.querySelector(`.nav-btn[data-view="${btn.dataset.view}"]`);
+          if (matchingNav) matchingNav.classList.add('active');
+          const view = btn.dataset.view;
+          document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
+          const el = document.getElementById(`view-${view}`);
+          if (el) el.classList.add('active');
+          if (view === 'history') HistoryModule.init();
+          if (view === 'stats') StatsModule.init();
+          if (view === 'upload-links') UploadLinksModule.init();
+          closeDrawer();
+        });
+      });
+
+      // Drawer theme button mirrors main theme button
+      const drawerThemeBtn = document.getElementById('drawer-btn-theme');
+      drawerThemeBtn.textContent = themeBtn.textContent;
+      drawerThemeBtn.addEventListener('click', () => {
+        themeBtn.click();
+        drawerThemeBtn.textContent = themeBtn.textContent;
+      });
+      themeBtn.addEventListener('click', () => { drawerThemeBtn.textContent = themeBtn.textContent; });
+
+      // Drawer upload link
+      document.getElementById('drawer-btn-upload-link').addEventListener('click', () => {
+        closeDrawer();
+        openUlDialog();
+      });
+
+      // Drawer logout
+      document.getElementById('drawer-btn-logout').addEventListener('click', async () => {
         await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
         location.reload();
       });
@@ -195,15 +302,28 @@
         .then(s => {
           if (!s || !s.disk) return;
           const pct = s.disk.total > 0 ? (s.disk.used / s.disk.total) * 100 : 0;
+          const text = `${Utils.formatBytes(s.disk.used)} / ${Utils.formatBytes(s.disk.total)}`;
+          const freeText = `${Utils.formatBytes(s.disk.free)} free`;
+
           const fill = document.getElementById('storage-bar-fill');
           const label = document.getElementById('storage-pct');
           const wrap = document.getElementById('header-storage');
           fill.style.width = pct.toFixed(1) + '%';
           fill.classList.toggle('warn', pct >= 75 && pct < 90);
           fill.classList.toggle('danger', pct >= 90);
-          label.textContent = `${Utils.formatBytes(s.disk.used)} / ${Utils.formatBytes(s.disk.total)}`;
-          wrap.title = `${Utils.formatBytes(s.disk.free)} free`;
+          label.textContent = text;
+          wrap.title = freeText;
           wrap.style.display = 'flex';
+
+          const drawerFill = document.getElementById('drawer-storage-bar-fill');
+          const drawerLabel = document.getElementById('drawer-storage-pct');
+          const drawerWrap = document.getElementById('drawer-storage');
+          drawerFill.style.width = pct.toFixed(1) + '%';
+          drawerFill.classList.toggle('warn', pct >= 75 && pct < 90);
+          drawerFill.classList.toggle('danger', pct >= 90);
+          drawerLabel.textContent = text;
+          drawerWrap.title = freeText;
+          drawerWrap.style.display = 'flex';
         })
         .catch(() => {});
 

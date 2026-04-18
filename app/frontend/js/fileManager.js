@@ -250,17 +250,21 @@ const FileManagerModule = {
     const popH = pop.offsetHeight;
     const inGrid = !!anchorEl.closest('.file-card');
     if (inGrid) {
-      // Place to the right of the card
-      let left = rect.right + window.scrollX + 6;
-      if (left + popW > window.innerWidth - 8) left = rect.left + window.scrollX - popW - 6;
-      let top = rect.top + window.scrollY;
-      if (top + popH > window.innerHeight + window.scrollY - 8) top = window.innerHeight + window.scrollY - popH - 8;
+      let left = rect.right + 6;
+      if (left + popW > window.innerWidth - 8) left = rect.left - popW - 6;
+      let top = rect.top;
+      if (top + popH > window.innerHeight - 8) top = window.innerHeight - popH - 8;
+      if (top < 8) top = 8;
       pop.style.top = `${top}px`;
       pop.style.left = `${left}px`;
     } else {
-      let left = rect.left + window.scrollX;
+      let left = rect.left;
       if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8;
-      pop.style.top = `${rect.bottom + window.scrollY + 6}px`;
+      if (left < 8) left = 8;
+      let top = rect.bottom + 6;
+      if (top + popH > window.innerHeight - 8) top = rect.top - popH - 6;
+      if (top < 8) top = 8;
+      pop.style.top = `${top}px`;
       pop.style.left = `${left}px`;
     }
 

@@ -245,13 +245,19 @@ async function uploadRequestRoutes(fastify) {
     const id = uuidv4();
     const db = getDb();
 
+    const rawMaxUses = req.body?.max_uses;
+    const maxUses = rawMaxUses === 0 ? 0 : (parseInt(rawMaxUses, 10) || 1);
+    if (maxUses !== 0 && (maxUses < 1 || maxUses > 1000)) {
+      return reply.code(400).send({ error: 'max_uses must be 0 (unlimited) or 1–1000' });
+    }
+
     db.prepare(`
-      INSERT INTO upload_requests (id, token, used, created_at, expires_at)
-      VALUES (?, ?, 0, ?, ?)
-    `).run(id, token, now, now + TOKEN_TTL);
+      INSERT INTO upload_requests (id, token, used, max_uses, use_count, created_at, expires_at)
+      VALUES (?, ?, 0, ?, 0, ?, ?)
+    `).run(id, token, maxUses, now, now + TOKEN_TTL);
 
     const url = `${config.domain}/api/u/${token}`;
-    return reply.code(201).send({ id, url, token, expires_at: now + TOKEN_TTL });
+    return reply.code(201).send({ id, url, token, expires_at: now + TOKEN_TTL, max_uses: maxUses });
   });
 
   // ── List upload requests (auth required) ─────────────────────────────────
@@ -301,13 +307,17 @@ async function uploadRequestRoutes(fastify) {
   fastify.post('/u/:token/upload', { config: { public: true } }, async (req, reply) => {
     const db = getDb();
 
-    // Atomic check-and-mark: use a transaction to prevent races
+    // Atomic check-and-increment
     const row = db.prepare('SELECT * FROM upload_requests WHERE token = ? AND used = 0').get(req.params.token);
     if (!row) return reply.code(410).send({ error: 'Link already used or invalid' });
     if (row.expires_at < Date.now()) return reply.code(410).send({ error: 'Link expired' });
 
-    // Mark used immediately — one-time guarantee
-    const updated = db.prepare('UPDATE upload_requests SET used = 1 WHERE token = ? AND used = 0').run(req.params.token);
+    const maxUses = row.max_uses ?? 1;
+    const newCount = (row.use_count ?? 0) + 1;
+    const exhausted = maxUses !== 0 && newCount >= maxUses;
+    const updated = db.prepare(
+      'UPDATE upload_requests SET use_count = ?, used = ? WHERE token = ? AND used = 0'
+    ).run(newCount, exhausted ? 1 : 0, req.params.token);
     if (updated.changes === 0) return reply.code(410).send({ error: 'Link already used' });
 
     const data = await req.file({ limits: { fileSize: MAX_SIZE } });
@@ -395,8 +405,12 @@ async function uploadRequestRoutes(fastify) {
     if (totalSize > MAX_SIZE) return reply.code(413).send({ error: 'File exceeds 10 GB limit' });
     if (totalChunks < 1 || totalChunks > 10000) return reply.code(400).send({ error: 'Invalid chunk count' });
 
-    // Mark used now — one-time
-    const updated = db.prepare('UPDATE upload_requests SET used = 1 WHERE token = ? AND used = 0').run(req.params.token);
+    const maxUses = row.max_uses ?? 1;
+    const newCount = (row.use_count ?? 0) + 1;
+    const exhausted = maxUses !== 0 && newCount >= maxUses;
+    const updated = db.prepare(
+      'UPDATE upload_requests SET use_count = ?, used = ? WHERE token = ? AND used = 0'
+    ).run(newCount, exhausted ? 1 : 0, req.params.token);
     if (updated.changes === 0) return reply.code(410).send({ error: 'Link already used' });
 
     const uploadId = uuidv4();
@@ -421,7 +435,7 @@ async function uploadRequestRoutes(fastify) {
   // ── Chunk PUT via token (public) ─────────────────────────────────────────
   fastify.put('/u/:token/chunked/:uploadId/chunk/:index', { config: { public: true } }, async (req, reply) => {
     const db = getDb();
-    const tokenRow = db.prepare('SELECT * FROM upload_requests WHERE token = ? AND used = 1 AND pending_upload_id = ?')
+    const tokenRow = db.prepare('SELECT * FROM upload_requests WHERE token = ? AND pending_upload_id = ?')
       .get(req.params.token, req.params.uploadId);
     if (!tokenRow) return reply.code(404).send({ error: 'Invalid session' });
 
@@ -466,7 +480,7 @@ async function uploadRequestRoutes(fastify) {
   // ── Chunked finalize via token (public) ──────────────────────────────────
   fastify.post('/u/:token/chunked/:uploadId/finalize', { config: { public: true } }, async (req, reply) => {
     const db = getDb();
-    const tokenRow = db.prepare('SELECT * FROM upload_requests WHERE token = ? AND used = 1 AND pending_upload_id = ?')
+    const tokenRow = db.prepare('SELECT * FROM upload_requests WHERE token = ? AND pending_upload_id = ?')
       .get(req.params.token, req.params.uploadId);
     if (!tokenRow) return reply.code(404).send({ error: 'Invalid session' });
 

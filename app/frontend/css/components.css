@@ -264,7 +264,7 @@
 
 /* ── Expiry popover ── */
 .expiry-popover {
-  position: absolute;
+  position: fixed;
   z-index: 9999;
   background: var(--color-surface, #0d1117);
   border: 1px solid var(--color-cyan);
@@ -311,15 +311,28 @@
   .file-manager-toolbar .sort-group { margin-left: 0; }
 
   /* Stacked card layout — kill table structure on mobile */
-  .file-list, .file-list tbody, .file-list tr { display: block; width: 100%; }
+  .file-list, .file-list tbody { display: block; width: 100%; }
   .file-list thead { display: none; }
   .file-list tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
     border-bottom: 1px solid var(--color-border);
     padding: 10px 0;
+    gap: 0;
   }
-  .file-list td { display: block; padding: 2px 0; border: none; font-size: 0.78rem; }
-  .file-list td.file-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; width: 100%; text-align: left; }
-  .file-list .col-expiry,
+  /* name full width */
+  .file-list td:nth-child(1) { display: block; width: 100%; padding: 0 0 4px; border: none; font-size: 0.9rem; }
+  /* size */
+  .file-list td:nth-child(2) { display: block; flex: 1; padding: 0; border: none; font-size: 0.78rem; color: var(--color-text-dim); }
+  /* date */
+  .file-list td:nth-child(3) { display: block; flex: 1; padding: 0; border: none; font-size: 0.78rem; color: var(--color-text-dim); text-align: right; }
+  /* expiry — hide on mobile, not enough space */
+  .file-list td:nth-child(4) { display: none; }
+  /* downloads — hide */
+  .file-list td:nth-child(5) { display: none; }
+  /* actions */
+  .file-list td.file-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; width: 100%; text-align: left; }
   .file-list .col-downloads { display: none; }
   .file-name { max-width: 100%; }
   .file-actions { gap: 6px; flex-wrap: wrap; }
@@ -340,6 +353,8 @@
   .ul-table th, .ul-table td { padding: 6px 6px; }
   .ul-cell-url { max-width: 120px; }
   .ul-cell-date { display: none; }
+  .ul-table thead th:nth-child(3),
+  .ul-table thead th:nth-child(4) { display: none; }
 }
 
 /* ── Upload Links ── */
@@ -405,3 +420,59 @@
 
 .ul-cell-date { font-size: 0.72rem; color: var(--color-text-dim); white-space: nowrap; }
 .ul-row-actions { display: flex; gap: 6px; }
+
+/* ── Upload link dialog ── */
+.ul-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ul-dialog-overlay.hidden { display: none; }
+.ul-dialog-box {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ul-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.ul-dialog-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-cyan);
+  letter-spacing: 0.15em;
+}
+.ul-dialog-body { display: flex; flex-direction: column; gap: 8px; }
+.ul-dialog-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-border2);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ul-dialog-option:hover { border-color: var(--color-cyan); background: rgba(0,245,255,0.04); }
+.ul-dialog-option.selected { border-color: var(--color-cyan); background: rgba(0,245,255,0.08); }
+.ul-opt-icon { font-size: 1.4rem; color: var(--color-cyan); width: 28px; text-align: center; flex-shrink: 0; }
+.ul-opt-label { font-size: 0.85rem; font-weight: 700; letter-spacing: 0.1em; color: var(--color-text); }
+.ul-opt-desc { font-size: 0.72rem; color: var(--color-text-dim); margin-top: 2px; }
+.ul-multi-input {
+  width: 64px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
