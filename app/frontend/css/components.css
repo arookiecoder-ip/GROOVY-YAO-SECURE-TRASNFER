@@ -97,6 +97,8 @@
 .upload-item-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .upload-item-name { font-size: 0.8rem; color: var(--color-text-bright); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 .upload-item-status { font-size: 0.72rem; color: var(--color-text-dim); }
+.upload-cancel-btn { margin-left: 8px; background: none; border: 1px solid var(--color-red, #ff4444); color: var(--color-red, #ff4444); font-size: 0.65rem; padding: 2px 6px; cursor: pointer; border-radius: 2px; line-height: 1; flex-shrink: 0; }
+.upload-cancel-btn:hover { background: var(--color-red, #ff4444); color: #000; }
 
 .progress-track {
   height: 4px;

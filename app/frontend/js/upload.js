@@ -69,6 +69,8 @@ const UploadManager = {
       xhr.withCredentials = true;
       xhr.open('POST', '/api/upload/simple');
 
+      this._active[progressId] = { aborted: false, xhr, progressId };
+
       xhr.upload.onprogress = (e) => {
         if (!e.lengthComputable) return;
         const elapsed = (Date.now() - item.startTime) / 1000;
@@ -78,6 +80,7 @@ const UploadManager = {
       };
 
       xhr.onload = () => {
+        delete this._active[progressId];
         if (xhr.status >= 200 && xhr.status < 300) {
           const data = JSON.parse(xhr.responseText);
           Progress.complete(progressId);
@@ -91,8 +94,14 @@ const UploadManager = {
       };
 
       xhr.onerror = () => {
+        delete this._active[progressId];
         Progress.error(progressId, 'Network error');
         Notifications.error('Upload failed', 'Network error');
+        resolve();
+      };
+
+      xhr.onabort = () => {
+        delete this._active[progressId];
         resolve();
       };
 
@@ -277,9 +286,15 @@ const UploadManager = {
 
   abort(uploadId) {
     const state = this._active[uploadId];
-    if (state) state.aborted = true;
-    fetch(`/api/upload/chunked/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' })
-      .catch(() => {});
+    if (!state) return;
+    state.aborted = true;
+    if (state.xhr) {
+      state.xhr.abort();
+    } else {
+      fetch(`/api/upload/chunked/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' })
+        .catch(() => {});
+    }
+    delete this._active[uploadId];
     this._removePending(uploadId);
   },
 

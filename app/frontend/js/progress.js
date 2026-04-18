@@ -13,6 +13,7 @@ const Progress = {
       <div class="upload-item-header">
         <span class="upload-item-name">${Utils.escape(filename)}</span>
         <span class="upload-item-status" id="status-${uploadId}">INITIALIZING...</span>
+        <button class="upload-cancel-btn" id="cancel-${uploadId}" title="Cancel upload">✕</button>
       </div>
       <div class="progress-track">
         <div class="progress-fill" id="fill-${uploadId}" style="width:0%"></div>
@@ -24,6 +25,12 @@ const Progress = {
     `;
     queue.appendChild(el);
     this._items.set(uploadId, { el, totalBytes, startTime: Date.now(), bytesLoaded: 0 });
+
+    el.querySelector(`#cancel-${uploadId}`).addEventListener('click', () => {
+      UploadManager.abort(uploadId);
+      this.cancelled(uploadId);
+    });
+
     return el;
   },
 
@@ -47,6 +54,7 @@ const Progress = {
     document.getElementById(`speed-${uploadId}`).textContent = '';
     document.getElementById(`eta-${uploadId}`).textContent = '';
     item.el.style.borderColor = 'var(--color-cyan)';
+    document.getElementById(`cancel-${uploadId}`)?.remove();
     setTimeout(() => {
       item.el.remove();
       this._items.delete(uploadId);
@@ -70,5 +78,19 @@ const Progress = {
     if (!item) return;
     document.getElementById(`status-${uploadId}`).textContent = `ERROR: ${msg}`;
     item.el.style.borderColor = 'var(--color-red)';
+    document.getElementById(`cancel-${uploadId}`)?.remove();
+  },
+
+  cancelled(uploadId) {
+    const item = this._items.get(uploadId);
+    if (!item) return;
+    document.getElementById(`status-${uploadId}`).textContent = 'CANCELLED';
+    item.el.style.borderColor = 'var(--color-red)';
+    document.getElementById(`cancel-${uploadId}`)?.remove();
+    setTimeout(() => {
+      item.el.remove();
+      this._items.delete(uploadId);
+      if (this._items.size === 0) document.getElementById('upload-queue').classList.add('hidden');
+    }, 1500);
   },
 };

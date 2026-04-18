@@ -333,7 +333,7 @@ html, body {
 .drop-zone {
   border: 2px dashed var(--color-border2);
   border-radius: var(--radius);
-  padding: 48px 24px;
+  padding: 80px 24px;
   text-align: center;
   cursor: pointer;
   transition: all var(--transition);
