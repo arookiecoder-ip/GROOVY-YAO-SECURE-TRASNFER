@@ -75,15 +75,12 @@ async function chunksRoutes(fastify) {
     const uploadId = uuidv4();
     const now = Date.now();
 
-    // Encrypt filename for storage
-    const { ciphertext: encName, iv: nameIv } = encryptFilename(filename, uploadId);
-
     db.prepare(`
       INSERT INTO uploads
         (id, original_name, original_name_iv, mime_type, total_size, total_chunks,
          sha256_expected, expires_in, created_at, updated_at, status)
       VALUES (?,?,?,?,?,?,?,?,?,?,'in_progress')
-    `).run(uploadId, encName, nameIv, mimeType, totalSize, totalChunks, sha256, expiresIn, now, now);
+    `).run(uploadId, filename, '', mimeType, totalSize, totalChunks, sha256, expiresIn, now, now);
 
     fs.mkdirSync(chunkDir(uploadId), { recursive: true });
 
@@ -248,7 +245,7 @@ async function chunksRoutes(fastify) {
     const now = Date.now();
     const expiresAt = now + expiryMs;
 
-    const { ciphertext: encName, iv: nameIv, tag: nameTag } = encryptFilename(upload.original_name, fileId);
+    const { ciphertext: encName, iv: nameIv, tag: nameTag } = encryptFilename(upload.original_name.trim(), fileId);
 
     db.prepare(`
       INSERT INTO files
