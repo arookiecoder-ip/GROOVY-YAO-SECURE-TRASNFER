@@ -45,7 +45,7 @@ async function chunksRoutes(fastify) {
   }, async (req, reply) => {
     const { filename, mimeType, totalSize, totalChunks, sha256, expiresIn = '24h' } = req.body || {};
 
-    if (!filename || !mimeType || !totalSize || !totalChunks || !sha256) {
+    if (!filename || !mimeType || !totalSize || !totalChunks) {
       return reply.code(400).send({ error: 'Missing required fields' });
     }
     if (!EXPIRY_OPTIONS[expiresIn]) {
@@ -56,21 +56,6 @@ async function chunksRoutes(fastify) {
     }
 
     const db = getDb();
-
-    // Resume: check existing in-progress upload for same file
-    const existing = db.prepare(`
-      SELECT id FROM uploads
-      WHERE original_name = ? AND total_size = ? AND sha256_expected = ? AND status = 'in_progress'
-      ORDER BY created_at DESC LIMIT 1
-    `).get(filename, totalSize, sha256);
-
-    if (existing) {
-      const received = db.prepare(
-        'SELECT chunk_index FROM upload_chunks WHERE upload_id = ? ORDER BY chunk_index'
-      ).all(existing.id).map((r) => r.chunk_index);
-
-      return reply.send({ uploadId: existing.id, receivedChunks: received });
-    }
 
     const uploadId = uuidv4();
     const now = Date.now();
@@ -115,16 +100,14 @@ async function chunksRoutes(fastify) {
     const data = await req.file();
     if (!data) return reply.code(400).send({ error: 'No chunk data' });
 
-    const expectedSha = req.headers['x-chunk-sha256'];
     const outPath = chunkFile(uploadId, chunkIndex);
 
-    const hasher = crypto.createHash('sha256');
     const chunks = [];
     let size = 0;
 
     try {
       await new Promise((resolve, reject) => {
-        data.file.on('data', (c) => { hasher.update(c); chunks.push(c); size += c.length; });
+        data.file.on('data', (c) => { chunks.push(c); size += c.length; });
         data.file.on('end', resolve);
         data.file.on('error', reject);
       });
@@ -133,18 +116,13 @@ async function chunksRoutes(fastify) {
       return reply.code(500).send({ error: 'Chunk receive failed' });
     }
 
-    const actualSha = hasher.digest('hex');
-    if (expectedSha && actualSha !== expectedSha) {
-      return reply.code(422).send({ error: 'Chunk SHA-256 mismatch', expected: expectedSha, actual: actualSha });
-    }
-
     fs.writeFileSync(outPath, Buffer.concat(chunks));
 
     const now = Date.now();
     db.prepare(`
       INSERT INTO upload_chunks (upload_id, chunk_index, size_bytes, sha256, received_at)
       VALUES (?,?,?,?,?)
-    `).run(uploadId, chunkIndex, size, actualSha, now);
+    `).run(uploadId, chunkIndex, size, '', now);
 
     db.prepare('UPDATE uploads SET updated_at = ? WHERE id = ?').run(now, uploadId);
 
@@ -231,14 +209,6 @@ async function chunksRoutes(fastify) {
     }
 
     const actualSha = plainHasher.digest('hex');
-    if (actualSha !== upload.sha256_expected) {
-      fs.unlink(outPath, () => {});
-      return reply.code(422).send({
-        error: 'File SHA-256 mismatch',
-        expected: upload.sha256_expected,
-        actual: actualSha,
-      });
-    }
 
     const totalSize = received.reduce((s, c) => s + c.size_bytes, 0);
     const expiryMs = EXPIRY_OPTIONS[upload.expires_in] ?? EXPIRY_OPTIONS['24h'];

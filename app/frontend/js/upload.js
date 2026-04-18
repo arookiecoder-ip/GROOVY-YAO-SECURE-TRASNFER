@@ -86,11 +86,7 @@ const UploadManager = {
     Progress.create(progressId, file.name, file.size);
 
     try {
-      // 1. Hash file + each chunk via worker
-      Notifications.info('Hashing', `Verifying ${file.name}…`);
-      const { fullSha, chunkShas } = await this._hashFile(file);
-
-      // 2. Init (or resume)
+      // 1. Init
       const totalChunks = Math.ceil(file.size / this.CHUNK_SIZE);
       const initRes = await this._fetchWithRetry('/api/upload/chunked/init', {
         method: 'POST',
@@ -100,7 +96,7 @@ const UploadManager = {
           mimeType: file.type || 'application/octet-stream',
           totalSize: file.size,
           totalChunks,
-          sha256: fullSha,
+          sha256: 'none',
           expiresIn: this._selectedExpiry,
         }),
         credentials: 'same-origin',
@@ -112,9 +108,9 @@ const UploadManager = {
       const { uploadId, receivedChunks } = await initRes.json();
       const received = new Set(receivedChunks);
 
-      this._active[uploadId] = { file, totalChunks, chunkShas, fullSha, progressId, aborted: false };
+      this._active[uploadId] = { file, totalChunks, progressId, aborted: false };
 
-      // 3. Upload missing chunks
+      // 2. Upload missing chunks
       for (let i = 0; i < totalChunks; i++) {
         if (received.has(i)) {
           Progress.advance(progressId, this._chunkSize(file, i));
@@ -126,7 +122,7 @@ const UploadManager = {
 
         const start = i * this.CHUNK_SIZE;
         const slice = file.slice(start, start + this.CHUNK_SIZE);
-        await this._uploadChunk(uploadId, i, slice, chunkShas[i]);
+        await this._uploadChunk(uploadId, i, slice, null);
 
         Progress.advance(progressId, slice.size);
       }
