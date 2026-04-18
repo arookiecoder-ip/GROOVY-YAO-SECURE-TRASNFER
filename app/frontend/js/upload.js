@@ -40,6 +40,13 @@ const UploadManager = {
 
     // Resume incomplete uploads on reconnect
     window.addEventListener('online', () => this._resumePending());
+
+    window.addEventListener('beforeunload', (e) => {
+      if (Object.keys(this._active).length > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
   },
 
   handleFiles(files) {
