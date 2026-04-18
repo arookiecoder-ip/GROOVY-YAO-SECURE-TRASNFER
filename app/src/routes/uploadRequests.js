@@ -90,6 +90,20 @@ function uploadLandingPage(state, token, nonce) {
               }
             }
 
+            function confirmCancel() {
+              return new Promise(resolve => {
+                const dlg = document.getElementById('dlg');
+                const yes = document.getElementById('dlg-yes');
+                const no = document.getElementById('dlg-no');
+                dlg.classList.remove('hidden');
+                const cleanup = ok => { dlg.classList.add('hidden'); yes.removeEventListener('click', onYes); no.removeEventListener('click', onNo); resolve(ok); };
+                const onYes = () => cleanup(true);
+                const onNo = () => cleanup(false);
+                yes.addEventListener('click', onYes);
+                no.addEventListener('click', onNo);
+              });
+            }
+
             function addRow(name) {
               const row = document.createElement('div');
               row.className = 'file-row';
@@ -100,7 +114,7 @@ function uploadLandingPage(state, token, nonce) {
               fileList.appendChild(row);
               row._abortController = new AbortController();
               row.querySelector('.fr-cancel').addEventListener('click', () => {
-                if (window.confirm('Cancel this upload?')) row._abortController.abort();
+                confirmCancel().then(ok => { if (ok) row._abortController.abort(); });
               });
               return row;
             }
@@ -298,6 +312,14 @@ function uploadLandingPage(state, token, nonce) {
     .fr-speed{font-size:.72rem;color:#00f5ff66;letter-spacing:.04em}
     .info-msg{font-size:.9rem;color:#ccc;text-align:center;line-height:1.6}
     .hidden{display:none!important}
+    .dlg-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center}
+    .dlg-box{background:#050a0e;border:1px solid #00f5ff44;padding:28px 32px;min-width:260px;max-width:360px;width:100%}
+    .dlg-msg{font-size:.85rem;color:#ccc;letter-spacing:.04em;margin-bottom:20px}
+    .dlg-actions{display:flex;gap:10px;justify-content:flex-end}
+    .dlg-btn{background:none;border:1px solid #00f5ff44;color:#00f5ff88;font-family:inherit;font-size:.75rem;letter-spacing:.08em;padding:6px 14px;cursor:pointer;transition:border-color .15s,color .15s}
+    .dlg-btn:hover{border-color:#00f5ff;color:#00f5ff}
+    .dlg-btn-danger{border-color:#ff444466;color:#ff4444}
+    .dlg-btn-danger:hover{border-color:#ff4444;color:#ff4444;background:#ff44441a}
     .gh-footer{margin-top:24px;text-align:center}
     .gh-link{display:inline-flex;align-items:center;gap:6px;color:#ffffff33;text-decoration:none;font-size:.68rem;letter-spacing:.08em;transition:color .15s}
     .gh-link:hover{color:#00f5ff}
@@ -305,6 +327,15 @@ function uploadLandingPage(state, token, nonce) {
   </style>
 </head>
 <body>
+  <div id="dlg" class="dlg-overlay hidden">
+    <div class="dlg-box">
+      <p class="dlg-msg">Cancel this upload?</p>
+      <div class="dlg-actions">
+        <button class="dlg-btn" id="dlg-no">KEEP</button>
+        <button class="dlg-btn dlg-btn-danger" id="dlg-yes">CANCEL UPLOAD</button>
+      </div>
+    </div>
+  </div>
   <div class="card">
     <div class="brand">GROOVY YAO // SECURE FILE TRANSFER</div>
     <div class="page-title">// ${s.title}</div>
