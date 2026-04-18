@@ -32,26 +32,17 @@ function uploadLandingPage(state, token, nonce) {
       body: `
         <div class="drop-zone" id="dz">
           <div class="drop-icon">⬡</div>
-          <div class="drop-text">DROP FILE HERE</div>
-          <div class="drop-sub">or click to browse</div>
-          <input type="file" id="fi" class="fi-hidden" />
+          <div class="drop-text">DROP FILES HERE</div>
+          <div class="drop-sub">or click to browse — multiple files allowed</div>
+          <input type="file" id="fi" class="fi-hidden" multiple />
         </div>
-        <div id="prog-wrap" class="prog-wrap hidden">
-          <div class="prog-name" id="prog-name"></div>
-          <div class="prog-track"><div class="prog-bar" id="prog-bar"></div></div>
-          <div class="prog-info" id="prog-info">0%</div>
-        </div>
-        <div id="result" class="result hidden"></div>
+        <div id="file-list"></div>
         <script nonce="${nonce}">
           (function() {
             const token = ${JSON.stringify(token)};
             const dz = document.getElementById('dz');
             const fi = document.getElementById('fi');
-            const progWrap = document.getElementById('prog-wrap');
-            const progBar = document.getElementById('prog-bar');
-            const progInfo = document.getElementById('prog-info');
-            const progName = document.getElementById('prog-name');
-            const result = document.getElementById('result');
+            const fileList = document.getElementById('file-list');
             const CHUNK = 20 * 1024 * 1024;
 
             dz.addEventListener('click', () => fi.click());
@@ -60,47 +51,73 @@ function uploadLandingPage(state, token, nonce) {
             dz.addEventListener('drop', e => {
               e.preventDefault();
               dz.classList.remove('dz-over');
-              const f = e.dataTransfer.files[0];
-              if (f) startUpload(f);
+              if (e.dataTransfer.files.length) startBatch(Array.from(e.dataTransfer.files));
             });
-            fi.addEventListener('change', () => { if (fi.files[0]) startUpload(fi.files[0]); fi.value = ''; });
+            fi.addEventListener('change', () => {
+              if (fi.files.length) startBatch(Array.from(fi.files));
+              fi.value = '';
+            });
 
-            async function startUpload(file) {
-              if (file.size > ${MAX_SIZE}) {
-                showResult('error', 'File exceeds 10 GB limit.');
-                return;
-              }
-              dz.classList.add('hidden');
-              progWrap.classList.remove('hidden');
-              progName.textContent = file.name;
-
-              try {
-                if (file.size <= 500 * 1024 * 1024) {
-                  await simpleUpload(file);
-                } else {
-                  await chunkedUpload(file);
+            async function startBatch(files) {
+              for (const file of files) {
+                const row = addRow(file.name);
+                if (file.size > ${MAX_SIZE}) {
+                  setRowError(row, 'exceeds 10 GB limit');
+                  continue;
                 }
-              } catch(err) {
-                showResult('error', err.message || 'Upload failed.');
+                try {
+                  if (file.size <= 500 * 1024 * 1024) {
+                    await simpleUpload(file, row);
+                  } else {
+                    await chunkedUpload(file, row);
+                  }
+                } catch(err) {
+                  setRowError(row, err.message || 'Upload failed');
+                }
               }
             }
 
-            async function simpleUpload(file) {
+            function addRow(name) {
+              const row = document.createElement('div');
+              row.className = 'file-row';
+              row.innerHTML =
+                '<div class="fr-name">' + escHtml(name) + '</div>' +
+                '<div class="fr-track"><div class="fr-bar"></div></div>' +
+                '<div class="fr-status">waiting…</div>';
+              fileList.appendChild(row);
+              return row;
+            }
+
+            function setRowProgress(row, pct) {
+              row.querySelector('.fr-bar').style.width = pct + '%';
+              row.querySelector('.fr-status').textContent = pct + '%';
+            }
+
+            function setRowDone(row) {
+              row.querySelector('.fr-bar').style.width = '100%';
+              row.querySelector('.fr-bar').style.background = '#00ff88';
+              row.querySelector('.fr-status').textContent = '✓ done';
+              row.querySelector('.fr-status').style.color = '#00ff88';
+            }
+
+            function setRowError(row, msg) {
+              row.querySelector('.fr-bar').style.background = '#ff4444';
+              row.querySelector('.fr-status').textContent = '✗ ' + msg;
+              row.querySelector('.fr-status').style.color = '#ff4444';
+            }
+
+            async function simpleUpload(file, row) {
               return new Promise((resolve, reject) => {
                 const fd = new FormData();
                 fd.append('file', file);
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', '/api/u/' + token + '/upload');
                 xhr.upload.onprogress = e => {
-                  if (!e.lengthComputable) return;
-                  const pct = Math.round(e.loaded / e.total * 100);
-                  progBar.style.width = pct + '%';
-                  progInfo.textContent = pct + '%';
+                  if (e.lengthComputable) setRowProgress(row, Math.round(e.loaded / e.total * 100));
                 };
                 xhr.onload = () => {
                   if (xhr.status >= 200 && xhr.status < 300) {
-                    const d = JSON.parse(xhr.responseText);
-                    showResult('ok', d.filename);
+                    setRowDone(row);
                     resolve();
                   } else {
                     const e = JSON.parse(xhr.responseText || '{}');
@@ -112,7 +129,7 @@ function uploadLandingPage(state, token, nonce) {
               });
             }
 
-            async function chunkedUpload(file) {
+            async function chunkedUpload(file, row) {
               const totalChunks = Math.ceil(file.size / CHUNK);
               const initRes = await fetch('/api/u/' + token + '/chunked/init', {
                 method: 'POST',
@@ -138,25 +155,12 @@ function uploadLandingPage(state, token, nonce) {
                 });
                 if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || 'Chunk failed'); }
                 uploaded += slice.size;
-                const pct = Math.round(uploaded / file.size * 100);
-                progBar.style.width = pct + '%';
-                progInfo.textContent = pct + '%';
+                setRowProgress(row, Math.round(uploaded / file.size * 100));
               }
 
               const finRes = await fetch('/api/u/' + token + '/chunked/' + uploadId + '/finalize', { method: 'POST' });
               if (!finRes.ok) { const e = await finRes.json().catch(()=>({})); throw new Error(e.error || 'Finalize failed'); }
-              const d = await finRes.json();
-              showResult('ok', d.filename);
-            }
-
-            function showResult(type, msg) {
-              progWrap.classList.add('hidden');
-              result.classList.remove('hidden');
-              if (type === 'ok') {
-                result.innerHTML = '<div class="res-ok">✓ TRANSFER COMPLETE</div><div class="res-file">' + escHtml(msg) + '</div>';
-              } else {
-                result.innerHTML = '<div class="res-err">✗ ' + escHtml(msg) + '</div>';
-              }
+              setRowDone(row);
             }
 
             function escHtml(s) {
@@ -204,15 +208,12 @@ function uploadLandingPage(state, token, nonce) {
     .drop-text{font-size:.95rem;font-weight:700;letter-spacing:.1em;margin-bottom:4px}
     .drop-sub{font-size:.75rem;color:#00f5ff66}
     .fi-hidden{display:none}
-    .prog-wrap{margin-top:24px}
-    .prog-name{font-size:.8rem;color:#ccc;margin-bottom:8px;word-break:break-all}
-    .prog-track{height:4px;background:#00f5ff22;border-radius:2px;overflow:hidden;margin-bottom:6px}
-    .prog-bar{height:100%;background:#00f5ff;width:0;transition:width .15s}
-    .prog-info{font-size:.75rem;color:#00f5ff88;text-align:right}
-    .result{margin-top:24px;text-align:center}
-    .res-ok{font-size:1rem;font-weight:700;color:#00ff88;letter-spacing:.1em;margin-bottom:8px}
-    .res-file{font-size:.85rem;color:#ccc;word-break:break-all}
-    .res-err{font-size:.9rem;color:#ff4444;letter-spacing:.08em}
+    #file-list{margin-top:16px;display:flex;flex-direction:column;gap:10px}
+    .file-row{padding:10px 0;border-bottom:1px solid #00f5ff11}
+    .fr-name{font-size:.8rem;color:#ccc;margin-bottom:6px;word-break:break-all}
+    .fr-track{height:4px;background:#00f5ff22;border-radius:2px;overflow:hidden;margin-bottom:4px}
+    .fr-bar{height:100%;background:#00f5ff;width:0;transition:width .15s}
+    .fr-status{font-size:.72rem;color:#00f5ff88;text-align:right}
     .info-msg{font-size:.9rem;color:#ccc;text-align:center;line-height:1.6}
     .hidden{display:none!important}
     .gh-footer{margin-top:24px;text-align:center}
