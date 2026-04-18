@@ -79,6 +79,7 @@ const FileManagerModule = {
             <tr>
               <th>NAME</th>
               <th>SIZE</th>
+              <th>UPLOADED (IST)</th>
               <th class="col-expiry">EXPIRES</th>
               <th class="col-downloads">Downloads</th>
               <th>ACTIONS</th>
@@ -105,20 +106,30 @@ const FileManagerModule = {
     </button>`;
   },
 
+  _formatIST(ts) {
+    if (!ts) return '—';
+    return new Date(ts).toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  },
+
   _listRow(f) {
     const cls = Utils.expiryClass(f.expires_at);
     return `
       <tr>
         <td><span class="file-name" title="${Utils.escape(f.name)}">${Utils.escape(f.name)}</span></td>
         <td class="file-size">${Utils.formatBytes(f.size_bytes)}</td>
+        <td class="file-size">${this._formatIST(f.created_at)}</td>
         <td class="file-expiry col-expiry ${cls}" data-expires="${f.expires_at || ''}">${Utils.formatExpiry(f.expires_at)}</td>
         <td class="file-size col-downloads">${f.download_count}</td>
         <td class="file-actions">
-          <button class="btn btn-ghost btn-sm" data-action="download"   data-id="${f.id}">Download</button>
-          <button class="btn btn-ghost btn-sm" data-action="qr"         data-id="${f.id}">QR Code</button>
+          <button class="btn btn-ghost btn-sm" data-action="download" data-id="${f.id}">Download</button>
+          ${f.is_public ? `<button class="btn btn-ghost btn-sm" data-action="qr" data-id="${f.id}">QR Code</button>` : ''}
           ${this._visToggle(f)}
-          <button class="btn btn-ghost btn-sm" data-action="extend"     data-id="${f.id}">Extend</button>
-          <button class="btn btn-danger btn-sm" data-action="delete"    data-id="${f.id}">Delete</button>
+          <button class="btn btn-ghost btn-sm" data-action="extend"  data-id="${f.id}">Extend</button>
+          <button class="btn btn-danger btn-sm" data-action="delete" data-id="${f.id}">Delete</button>
         </td>
       </tr>
     `;
@@ -129,12 +140,13 @@ const FileManagerModule = {
       <div class="file-card">
         <div class="file-card-name" title="${Utils.escape(f.name)}">${Utils.escape(f.name)}</div>
         <div class="file-card-meta">${Utils.formatBytes(f.size_bytes)}</div>
+        <div class="file-card-meta" style="font-size:0.7rem;color:var(--color-text-dim)">${this._formatIST(f.created_at)}</div>
         <div class="file-card-actions">
-          <button class="btn btn-ghost btn-sm" data-action="download"   data-id="${f.id}">Download</button>
-          <button class="btn btn-ghost btn-sm" data-action="qr"         data-id="${f.id}">QR Code</button>
+          <button class="btn btn-ghost btn-sm" data-action="download" data-id="${f.id}">Download</button>
+          ${f.is_public ? `<button class="btn btn-ghost btn-sm" data-action="qr" data-id="${f.id}">QR Code</button>` : ''}
           ${this._visToggle(f)}
-          <button class="btn btn-ghost btn-sm" data-action="extend"     data-id="${f.id}">Extend</button>
-          <button class="btn btn-danger btn-sm" data-action="delete"    data-id="${f.id}">Delete</button>
+          <button class="btn btn-ghost btn-sm" data-action="extend"  data-id="${f.id}">Extend</button>
+          <button class="btn btn-danger btn-sm" data-action="delete" data-id="${f.id}">Delete</button>
         </div>
       </div>
     `;

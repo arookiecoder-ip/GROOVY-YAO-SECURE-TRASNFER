@@ -147,13 +147,47 @@ async function filesRoutes(fastify) {
     }
     if (!row.is_public) {
       const token = req.cookies?.access_token;
-      if (!token) return reply.code(401).send({ error: 'This file is private' });
+      const isBrowser = (req.headers['accept'] || '').includes('text/html');
+      const deny = (code, msg) => {
+        if (isBrowser) {
+          return reply.code(code).type('text/html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>GROOVY YAO // ACCESS DENIED</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#050a0e;color:#00f5ff;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+    .card{border:1px solid #00f5ff44;padding:48px 40px;max-width:420px;width:100%;text-align:center}
+    .icon{font-size:3rem;margin-bottom:24px;color:#ff4444}
+    .title{font-size:1.1rem;font-weight:700;letter-spacing:.15em;color:#ff4444;margin-bottom:8px}
+    .sub{font-size:.8rem;color:#ffffff66;letter-spacing:.08em;margin-bottom:32px}
+    .msg{font-size:.9rem;color:#ccc;margin-bottom:32px;line-height:1.6}
+    .btn{display:inline-block;padding:10px 24px;border:1px solid #00f5ff;color:#00f5ff;text-decoration:none;font-family:inherit;font-size:.8rem;letter-spacing:.1em;cursor:pointer;background:transparent}
+    .btn:hover{background:#00f5ff;color:#000}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">⬡</div>
+    <div class="title">// ACCESS DENIED</div>
+    <div class="sub">GROOVY YAO — SECURE FILE TRANSFER</div>
+    <div class="msg">${msg}</div>
+    <a href="/" class="btn">RETURN TO BASE</a>
+  </div>
+</body>
+</html>`);
+        }
+        return reply.code(code).send({ error: msg });
+      };
+      if (!token) return deny(401, 'This file is private. Authentication required.');
       try {
         const { verifyAccessToken, getSession } = require('../services/auth');
         const sessionId = await verifyAccessToken(token);
-        if (!getSession(sessionId)) return reply.code(401).send({ error: 'Session revoked' });
+        if (!getSession(sessionId)) return deny(401, 'Session revoked.');
       } catch {
-        return reply.code(401).send({ error: 'Unauthorized' });
+        return deny(401, 'Unauthorized.');
       }
     }
 
@@ -169,6 +203,64 @@ async function filesRoutes(fastify) {
       filename = decryptFilename(row.original_name, row.original_name_iv, nameTag, row.id);
     } catch {
       filename = 'download';
+    }
+
+    // Show download page for browser requests on public files (no ?dl=1)
+    const isBrowser = (req.headers['accept'] || '').includes('text/html');
+    if (isBrowser && row.is_public && req.query.dl !== '1') {
+      const sizeBytes = row.size_bytes;
+      const formatBytes = (b) => {
+        if (b >= 1073741824) return (b / 1073741824).toFixed(2) + ' GB';
+        if (b >= 1048576) return (b / 1048576).toFixed(2) + ' MB';
+        if (b >= 1024) return (b / 1024).toFixed(2) + ' KB';
+        return b + ' B';
+      };
+      const uploadedAt = new Date(row.created_at).toLocaleString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      });
+      const expiryStr = row.expires_at
+        ? new Date(row.expires_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : 'Never';
+      const safeFilename = filename.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return reply.type('text/html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>GROOVY YAO // ${safeFilename}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#050a0e;color:#00f5ff;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+    .card{border:1px solid #00f5ff44;padding:48px 40px;max-width:480px;width:100%}
+    .brand{font-size:.75rem;letter-spacing:.2em;color:#00f5ff88;margin-bottom:32px}
+    .icon{font-size:3rem;color:#00f5ff66;margin-bottom:20px}
+    .filename{font-size:1.1rem;font-weight:700;color:#fff;word-break:break-all;margin-bottom:24px;line-height:1.4}
+    .meta{display:flex;flex-direction:column;gap:10px;margin-bottom:32px;border-top:1px solid #00f5ff22;padding-top:20px}
+    .meta-row{display:flex;justify-content:space-between;font-size:.78rem}
+    .meta-label{color:#00f5ff88;letter-spacing:.08em}
+    .meta-value{color:#ccc;text-align:right}
+    .btn{display:block;width:100%;padding:14px;border:1px solid #00ff88;color:#00ff88;background:transparent;font-family:inherit;font-size:.85rem;font-weight:700;letter-spacing:.12em;cursor:pointer;text-align:center;text-decoration:none;transition:background .15s,color .15s}
+    .btn:hover{background:#00ff88;color:#000}
+    .footer{margin-top:20px;text-align:center;font-size:.68rem;color:#ffffff33;letter-spacing:.1em}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">GROOVY YAO // SECURE FILE TRANSFER</div>
+    <div class="icon">⬡</div>
+    <div class="filename">${safeFilename}</div>
+    <div class="meta">
+      <div class="meta-row"><span class="meta-label">SIZE</span><span class="meta-value">${formatBytes(sizeBytes)}</span></div>
+      <div class="meta-row"><span class="meta-label">UPLOADED</span><span class="meta-value">${uploadedAt}</span></div>
+      <div class="meta-row"><span class="meta-label">EXPIRES</span><span class="meta-value">${expiryStr}</span></div>
+      <div class="meta-row"><span class="meta-label">DOWNLOADS</span><span class="meta-value">${row.download_count}</span></div>
+    </div>
+    <a href="?dl=1" class="btn">⬇ DOWNLOAD FILE</a>
+    <div class="footer">// ENCRYPTED TRANSFER</div>
+  </div>
+</body>
+</html>`);
     }
 
     db.prepare('UPDATE files SET download_count = download_count + 1 WHERE id = ?').run(row.id);
