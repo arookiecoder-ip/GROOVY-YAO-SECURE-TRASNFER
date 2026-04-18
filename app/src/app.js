@@ -1,4 +1,4 @@
-const fastify = require('fastify')({ logger: true });
+const fastify = require('fastify')({ logger: true, bodyLimit: 70 * 1024 * 1024 });
 const path = require('path');
 const { config } = require('./config');
 
