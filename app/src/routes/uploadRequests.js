@@ -179,19 +179,31 @@ function uploadLandingPage(state, token, nonce) {
               const { uploadId } = await initRes.json();
 
               const startTime = Date.now();
-              let uploaded = 0;
+              // per-chunk byte progress tracked separately so parallel uploads sum correctly
+              const chunkProgress = new Array(totalChunks).fill(0);
+
+              function onChunkProgress(i, loaded) {
+                chunkProgress[i] = loaded;
+                const totalLoaded = chunkProgress.reduce((a, b) => a + b, 0);
+                setRowProgress(row, Math.min(99, Math.round(totalLoaded / file.size * 100)), totalLoaded, file.size, startTime);
+              }
 
               async function uploadChunk(i) {
                 const start = i * CHUNK;
                 const slice = file.slice(start, start + CHUNK);
-                const fd = new FormData();
-                fd.append('chunk', slice, 'chunk-' + i);
-                const res = await fetch('/api/u/' + token + '/chunked/' + uploadId + '/chunk/' + i, {
-                  method: 'PUT', body: fd,
+                await new Promise((resolve, reject) => {
+                  const fd = new FormData();
+                  fd.append('chunk', slice, 'chunk-' + i);
+                  const xhr = new XMLHttpRequest();
+                  xhr.open('PUT', '/api/u/' + token + '/chunked/' + uploadId + '/chunk/' + i);
+                  xhr.upload.onprogress = e => { if (e.lengthComputable) onChunkProgress(i, e.loaded); };
+                  xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) { onChunkProgress(i, slice.size); resolve(); }
+                    else { const e = JSON.parse(xhr.responseText || '{}'); reject(new Error(e.error || 'Chunk failed')); }
+                  };
+                  xhr.onerror = () => reject(new Error('Network error'));
+                  xhr.send(fd);
                 });
-                if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || 'Chunk failed'); }
-                uploaded += slice.size;
-                setRowProgress(row, Math.round(uploaded / file.size * 100), uploaded, file.size, startTime);
               }
 
               // sliding window: PARALLEL_CHUNKS in-flight at once
