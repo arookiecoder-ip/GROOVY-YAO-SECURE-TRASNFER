@@ -100,7 +100,7 @@ function uploadLandingPage(state, token, nonce) {
               fileList.appendChild(row);
               row._abortController = new AbortController();
               row.querySelector('.fr-cancel').addEventListener('click', () => {
-                row._abortController.abort();
+                if (window.confirm('Cancel this upload?')) row._abortController.abort();
               });
               return row;
             }
