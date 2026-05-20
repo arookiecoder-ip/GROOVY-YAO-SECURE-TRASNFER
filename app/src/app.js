@@ -199,9 +199,7 @@ async function buildApp() {
 
     // /s/ or /b/ with no token → redirect to home
     f.get('/s', { config: { public: true } }, async (_req, reply) => reply.redirect(302, '/'));
-    f.get('/s/', { config: { public: true } }, async (_req, reply) => reply.redirect(302, '/'));
     f.get('/b', { config: { public: true } }, async (_req, reply) => reply.redirect(302, '/'));
-    f.get('/b/', { config: { public: true } }, async (_req, reply) => reply.redirect(302, '/'));
   });
 
   // WebSocket route
