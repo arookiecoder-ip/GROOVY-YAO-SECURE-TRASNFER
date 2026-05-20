@@ -11,12 +11,29 @@ const BundleLinksModule = {
     if (!el) return;
     try {
       const res = await fetch('/api/bundles', { credentials: 'same-origin' });
-      if (!res.ok) throw new Error('Failed to load');
-      const { bundles } = await res.json();
-      this._bundles = bundles || [];
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      this._bundles = data.bundles || [];
       this._render(el);
-    } catch {
-      el.innerHTML = '<div class="empty-state"><div class="empty-state-text">Failed to load bundle links.</div></div>';
+    } catch (err) {
+      console.error('[BundleLinks] refresh failed:', err);
+      el.innerHTML = `
+        <div class="ul-toolbar">
+          <div class="ul-title">// BUNDLE LINKS</div>
+          <div class="ul-actions">
+            <button class="btn btn-ghost btn-sm" id="bl-btn-refresh">⟳ REFRESH</button>
+          </div>
+        </div>
+        <div class="empty-state">
+          <div class="empty-state-text" style="color:var(--color-red)">Failed to load: ${Utils.escape(err.message)}</div>
+          <div class="empty-state-text" style="font-size:.72rem;margin-top:8px;color:var(--color-text-dim)">
+            Try restarting the server if this is a fresh install
+          </div>
+        </div>`;
+      el.querySelector('#bl-btn-refresh')?.addEventListener('click', () => this.refresh());
     }
   },
 

@@ -112,6 +112,26 @@ function bundleLandingPage(bundle, files) {
 
 async function bundlesRoutes(fastify) {
 
+  // Ensure bundles table exists — self-healing for servers that were running
+  // before this migration was added (avoids requiring a manual restart)
+  const { getDb: _getDb } = require('../db/db');
+  try {
+    const _db = _getDb();
+    _db.exec(`
+      CREATE TABLE IF NOT EXISTS bundles (
+        id TEXT PRIMARY KEY,
+        token TEXT NOT NULL UNIQUE,
+        file_ids TEXT NOT NULL,
+        label TEXT,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        download_count INTEGER DEFAULT 0,
+        revoked INTEGER DEFAULT 0
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_bundles_token ON bundles(token);
+    `);
+  } catch { /* table already exists — ignore */ }
+
   // ── Create bundle (authenticated) ─────────────────────────────────────────
   fastify.post('/bundles', async (req, reply) => {
     const { fileIds, label } = req.body || {};

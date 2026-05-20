@@ -201,6 +201,8 @@ const FileManagerModule = {
         `BUNDLE LINK CREATED`,
         `${ids.length} file${ids.length !== 1 ? 's' : ''} — link copied to clipboard`
       );
+      // Refresh bundles tab if it's currently visible
+      if (typeof BundleLinksModule !== 'undefined') BundleLinksModule.refresh();
     } catch (err) {
       Notifications.error('Bundle creation failed', err.message);
     } finally {
