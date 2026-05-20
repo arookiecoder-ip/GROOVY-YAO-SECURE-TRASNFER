@@ -261,8 +261,16 @@ async function filesRoutes(fastify) {
     });
   });
 
-  // ── Download by share token (public files only) ───────────────────────────
+  // ── Share token root — redirect old long URLs to short path ─────────────
+  // Backward compat: existing links like /api/files/s/:token[/download] still work
+  fastify.get('/files/s/:token', { config: { public: true } }, async (req, reply) => {
+    return reply.redirect(301, `/s/${req.params.token}`);
+  });
   fastify.get('/files/s/:token/download', { config: { public: true } }, async (req, reply) => {
+    // Preserve ?dl=1 query param if present
+    const qs = req.query.dl === '1' ? '?dl=1' : '';
+    return reply.redirect(301, `/s/${req.params.token}${qs}`);
+  });
     const db = getDb();
     const row = db.prepare('SELECT * FROM files WHERE share_token = ? AND status = ? AND is_public = 1').get(req.params.token, 'complete');
     const isBrowser = (req.headers['accept'] || '').includes('text/html');
@@ -445,7 +453,7 @@ async function filesRoutes(fastify) {
     if (!row) return reply.code(404).send({ error: 'File not found' });
     if (!row.is_public || !row.share_token) return reply.code(403).send({ error: 'File is not public' });
 
-    const downloadUrl = `${config.domain}/api/files/s/${row.share_token}/download`;
+    const downloadUrl = `${config.domain}/s/${row.share_token}`;
     const dataUrl = await QRCode.toDataURL(downloadUrl, { width: 256, margin: 2 });
     return reply.send({ dataUrl, downloadUrl });
   });
@@ -459,7 +467,8 @@ async function filesRoutes(fastify) {
     if (!row) return reply.code(404).send({ error: 'File not found' });
     let shareToken = null;
     if (isPublic) {
-      shareToken = crypto.randomBytes(24).toString('base64url');
+      // Short token: 9 bytes = 12 base64url chars
+      shareToken = crypto.randomBytes(9).toString('base64url');
       db.prepare('UPDATE files SET is_public = 1, share_token = ? WHERE id = ?').run(shareToken, req.params.id);
     } else {
       db.prepare('UPDATE files SET is_public = 0, share_token = NULL WHERE id = ?').run(req.params.id);
@@ -587,3 +596,60 @@ async function filesRoutes(fastify) {
 }
 
 module.exports = filesRoutes;
+
+// ── Short public route: /s/:token ─────────────────────────────────────────
+// Registered at root level (no /api prefix) for short shareable URLs.
+// Handles both the landing page (browser) and direct download (?dl=1).
+async function filesShortRoute(fastify) {
+  const { getDb: _getDb } = require('../db/db');
+  const { createDecryptStream: _createDecryptStream, decryptFilename: _decryptFilename } = require('../services/encryption');
+
+  fastify.get('/s/:token', { config: { public: true } }, async (req, reply) => {
+    const db = _getDb();
+    const row = db.prepare('SELECT * FROM files WHERE share_token = ? AND status = ? AND is_public = 1').get(req.params.token, 'complete');
+    const isBrowser = (req.headers['accept'] || '').includes('text/html');
+
+    if (!row) {
+      return isBrowser
+        ? reply.code(404).type('text/html').send(accessDeniedPage('This link is invalid or the file has been made private.'))
+        : reply.code(404).send({ error: 'Not found' });
+    }
+    if (row.expires_at && row.expires_at < Date.now()) {
+      return isBrowser
+        ? reply.code(410).type('text/html').send(accessDeniedPage('This file has expired.'))
+        : reply.code(410).send({ error: 'File expired' });
+    }
+
+    const filePath = storagePath(row.storage_id);
+    if (!fs.existsSync(filePath)) return reply.code(404).send({ error: 'Storage missing' });
+
+    const saltHex = row.encryption_iv.split(':')[0];
+    let filename;
+    try {
+      const tagParts = row.encryption_tag.split(':');
+      if (tagParts.length < 2 || !tagParts[1]) throw new Error('Malformed tag');
+      filename = _decryptFilename(row.original_name, row.original_name_iv, tagParts[1], row.id);
+    } catch { filename = 'download'; }
+
+    // Show landing page in browser unless ?dl=1
+    if (isBrowser && req.query.dl !== '1') {
+      return reply.type('text/html').send(downloadPage(row, filename));
+    }
+
+    db.prepare('UPDATE files SET download_count = download_count + 1 WHERE id = ?').run(row.id);
+
+    const safeFilename = encodeURIComponent(filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+    reply.header('Content-Type', row.mime_type || 'application/octet-stream');
+    reply.header('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${safeFilename}`);
+    reply.header('X-Content-Type-Options', 'nosniff');
+
+    const readStream = fs.createReadStream(filePath);
+    const decStream = _createDecryptStream(row.id, saltHex);
+    readStream.on('error', (err) => { req.log.error(err, 'short share read error'); decStream.destroy(err); });
+    decStream.on('error', (err) => { req.log.error(err, 'short share decrypt error'); if (!reply.sent) reply.raw.destroy(); });
+    readStream.pipe(decStream);
+    return reply.send(decStream);
+  });
+}
+
+module.exports.filesShortRoute = filesShortRoute;

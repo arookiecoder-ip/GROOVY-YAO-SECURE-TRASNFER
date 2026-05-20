@@ -1,4 +1,4 @@
-const fastify = require('fastify')({ logger: true, bodyLimit: 70 * 1024 * 1024 });
+const fastify = require('fastify')({ logger: true, bodyLimit: 70 * 1024 * 1024, ignoreTrailingSlash: true });
 const path = require('path');
 const crypto = require('crypto');
 const { config } = require('./config');
@@ -177,6 +177,16 @@ async function buildApp() {
   await fastify.register(require('./routes/chunks'), { prefix: '/api' });
   await fastify.register(require('./routes/uploadRequests'), { prefix: '/api' });
   await fastify.register(require('./routes/bundles'),        { prefix: '/api' });
+
+  // ── Short public share links (no /api prefix) ─────────────────────────────
+  // /s/:token  → single file share page
+  // /b/:token  → bundle page
+  await fastify.register(async function shortLinks(f) {
+    const { filesShortRoute } = require('./routes/files');
+    const { bundlesShortRoute } = require('./routes/bundles');
+    if (filesShortRoute) await filesShortRoute(f);
+    if (bundlesShortRoute) await bundlesShortRoute(f);
+  });
 
   // WebSocket route
   const { wsRoutes } = require('./routes/ws');
