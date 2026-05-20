@@ -16,6 +16,9 @@ const BLOCKED_TYPES = new Set([
 
 const BLOCKED_EXTENSIONS = /\.(exe|dll|so|bat|cmd|sh|ps1|vbs|jar|msi|scr|com|pif|app|deb|rpm)$/i;
 
+// How many bytes to read for magic-byte detection (4096 is enough for all common formats)
+const MAGIC_BYTES_SAMPLE = 4096;
+
 let _fileTypeFromBuffer;
 
 async function getFileTypeFromBuffer(buf) {
@@ -26,6 +29,12 @@ async function getFileTypeFromBuffer(buf) {
   return _fileTypeFromBuffer(buf);
 }
 
+/**
+ * Validate a file's type by extension and magic bytes.
+ * @param {Buffer} buf - First MAGIC_BYTES_SAMPLE bytes of the file (or full buffer for small files)
+ * @param {string} declaredName - The filename as declared by the client
+ * @returns {{ ok: boolean, reason?: string }}
+ */
 async function validateFileType(buf, declaredName) {
   if (BLOCKED_EXTENSIONS.test(declaredName || '')) {
     return { ok: false, reason: 'Blocked file extension' };
@@ -41,4 +50,4 @@ async function validateFileType(buf, declaredName) {
   return { ok: true };
 }
 
-module.exports = { validateFileType };
+module.exports = { validateFileType, MAGIC_BYTES_SAMPLE };

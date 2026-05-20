@@ -28,7 +28,6 @@
     "file-type": "^19",
     "jose": "^5",
     "node-cron": "^3",
-    "nodemailer": "^8.0.5",
     "otplib": "^12",
     "qrcode": "^1.5",
     "uuid": "^9"

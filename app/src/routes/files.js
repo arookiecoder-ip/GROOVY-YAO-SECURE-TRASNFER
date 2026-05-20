@@ -13,6 +13,7 @@ const {
   encryptFilename,
   decryptFilename,
 } = require('../services/encryption');
+const { validateFileType, MAGIC_BYTES_SAMPLE } = require('../middleware/fileType');
 
 const EXPIRY_OPTIONS = {
   '1h':    60 * 60 * 1000,
@@ -31,7 +32,12 @@ function ipHash(ip) {
 }
 
 function storagePath(storageId) {
-  return path.join(config.storagePath, storageId);
+  // Fix #1: guard against path traversal — storageId must resolve inside storagePath
+  const resolved = path.resolve(config.storagePath, storageId);
+  if (!resolved.startsWith(path.resolve(config.storagePath) + path.sep)) {
+    throw new Error('Invalid storage ID');
+  }
+  return resolved;
 }
 
 function accessDeniedPage(msg) {
@@ -130,11 +136,17 @@ function downloadPage(row, filename) {
 }
 
 function buildFileRow(row) {
-  let name = row.original_name;
+  // Fix #12: return a safe placeholder instead of leaking raw ciphertext on decrypt failure
+  let name = '[encrypted]';
   try {
-    const nameTag = (row.encryption_tag || '').split(':')[1] || row.encryption_tag;
-    name = decryptFilename(row.original_name, row.original_name_iv, nameTag, row.id);
-  } catch { /* use raw if decryption fails */ }
+    // Fix #13: validate encryption_tag format before splitting
+    const tagParts = (row.encryption_tag || '').split(':');
+    if (tagParts.length < 2 || !tagParts[1]) throw new Error('Malformed encryption_tag');
+    name = decryptFilename(row.original_name, row.original_name_iv, tagParts[1], row.id);
+  } catch (err) {
+    // Log but don't expose internal details to the client
+    console.error(`[files] decryptFilename failed for ${row.id}:`, err.message);
+  }
   return {
     id: row.id,
     name,
@@ -173,14 +185,21 @@ async function filesRoutes(fastify) {
     encStream.once('keydata', (kd) => { keydata = kd; });
 
     let totalSize = 0;
+    // Fix #2: collect first MAGIC_BYTES_SAMPLE bytes for file type validation
+    let magicBuf = null;
 
     try {
       await new Promise((resolve, reject) => {
+        // Fix #17: respect backpressure — pause source when encStream buffer is full
         data.file.on('data', (chunk) => {
           hasher.update(chunk);
           totalSize += chunk.length;
-          encStream.write(chunk);
+          // Collect magic bytes from first chunk
+          if (!magicBuf) magicBuf = chunk.slice(0, MAGIC_BYTES_SAMPLE);
+          const ok = encStream.write(chunk);
+          if (!ok) data.file.pause();
         });
+        encStream.on('drain', () => data.file.resume());
         data.file.on('end', () => { encStream.end(); });
         data.file.on('error', reject);
         encStream.pipe(outStream);
@@ -197,6 +216,15 @@ async function filesRoutes(fastify) {
     if (!keydata) {
       fs.unlink(filePath, () => {});
       return reply.code(500).send({ error: 'Encryption key not generated' });
+    }
+
+    // Fix #2: validate file type via magic bytes
+    if (magicBuf) {
+      const typeCheck = await validateFileType(magicBuf, data.filename);
+      if (!typeCheck.ok) {
+        fs.unlink(filePath, () => {});
+        return reply.code(415).send({ error: typeCheck.reason });
+      }
     }
 
     const sha256 = hasher.digest('hex');
@@ -251,8 +279,10 @@ async function filesRoutes(fastify) {
     const saltHex = row.encryption_iv.split(':')[0];
     let filename;
     try {
-      const nameTag = row.encryption_tag.split(':')[1];
-      filename = decryptFilename(row.original_name, row.original_name_iv, nameTag, row.id);
+      // Fix #13: validate tag format before splitting
+      const tagParts = row.encryption_tag.split(':');
+      if (tagParts.length < 2 || !tagParts[1]) throw new Error('Malformed tag');
+      filename = decryptFilename(row.original_name, row.original_name_iv, tagParts[1], row.id);
     } catch { filename = 'download'; }
 
     if (isBrowser && req.query.dl !== '1') {
@@ -270,6 +300,15 @@ async function filesRoutes(fastify) {
 
     const readStream = fs.createReadStream(filePath);
     const decStream = createDecryptStream(row.id, saltHex);
+    // Fix #8: handle stream errors to prevent unhandled error events crashing the process
+    readStream.on('error', (err) => {
+      req.log.error(err, 'read stream error during public download');
+      decStream.destroy(err);
+    });
+    decStream.on('error', (err) => {
+      req.log.error(err, 'decrypt stream error during public download');
+      if (!reply.sent) reply.raw.destroy();
+    });
     readStream.pipe(decStream);
     return reply.send(decStream);
   });
@@ -287,8 +326,10 @@ async function filesRoutes(fastify) {
     const saltHex = row.encryption_iv.split(':')[0];
     let filename;
     try {
-      const nameTag = row.encryption_tag.split(':')[1];
-      filename = decryptFilename(row.original_name, row.original_name_iv, nameTag, row.id);
+      // Fix #13: validate tag format before splitting
+      const tagParts = row.encryption_tag.split(':');
+      if (tagParts.length < 2 || !tagParts[1]) throw new Error('Malformed tag');
+      filename = decryptFilename(row.original_name, row.original_name_iv, tagParts[1], row.id);
     } catch { filename = 'download'; }
 
     db.prepare('UPDATE files SET download_count = download_count + 1 WHERE id = ?').run(row.id);
@@ -302,6 +343,15 @@ async function filesRoutes(fastify) {
 
     const readStream = fs.createReadStream(filePath);
     const decStream = createDecryptStream(row.id, saltHex);
+    // Fix #8: handle stream errors to prevent unhandled error events crashing the process
+    readStream.on('error', (err) => {
+      req.log.error(err, 'read stream error during authenticated download');
+      decStream.destroy(err);
+    });
+    decStream.on('error', (err) => {
+      req.log.error(err, 'decrypt stream error during authenticated download');
+      if (!reply.sent) reply.raw.destroy();
+    });
     readStream.pipe(decStream);
     return reply.send(decStream);
   });
@@ -418,14 +468,20 @@ async function filesRoutes(fastify) {
     reply.header('Content-Disposition', 'attachment; filename="transfer.zip"');
 
     const archive = archiver('zip', { zlib: { level: 0 } });
+    // Fix #8: handle archiver errors to prevent unhandled error events
+    archive.on('error', (err) => {
+      req.log.error(err, 'archiver error during zip');
+    });
     reply.send(archive);
 
     for (const row of files) {
       const saltHex = row.encryption_iv.split(':')[0];
       let filename;
       try {
-        const nameTag = row.encryption_tag.split(':')[1];
-        filename = decryptFilename(row.original_name, row.original_name_iv, nameTag, row.id);
+        // Fix #13: validate tag format before splitting
+        const tagParts = row.encryption_tag.split(':');
+        if (tagParts.length < 2 || !tagParts[1]) throw new Error('Malformed tag');
+        filename = decryptFilename(row.original_name, row.original_name_iv, tagParts[1], row.id);
       } catch { filename = row.id; }
 
       const filePath = storagePath(row.storage_id);
@@ -433,6 +489,14 @@ async function filesRoutes(fastify) {
 
       const readStream = fs.createReadStream(filePath);
       const decStream = createDecryptStream(row.id, saltHex);
+      // Fix #8: handle per-file stream errors so one bad file doesn't crash the archive
+      readStream.on('error', (err) => {
+        req.log.error(err, `read stream error for file ${row.id} in zip`);
+        decStream.destroy(err);
+      });
+      decStream.on('error', (err) => {
+        req.log.error(err, `decrypt stream error for file ${row.id} in zip`);
+      });
       readStream.pipe(decStream);
       archive.append(decStream, { name: filename });
     }

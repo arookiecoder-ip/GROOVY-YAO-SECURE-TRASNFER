@@ -1,10 +1,14 @@
-// FileManager — list/grid view, sort, expiry countdowns
+// FileManager — list/grid view, sort, expiry countdowns, multi-select
 const FileManagerModule = {
   _files: [],
   _view: localStorage.getItem('fm-view') || 'list',
   _sort: localStorage.getItem('fm-sort') || 'date',
   _expiryInterval: null,
   _actionsAbort: null,
+
+  // Multi-select state
+  _selected: new Set(),   // Set of file IDs currently selected
+  _bulkBar: null,         // reference to the floating bulk-action bar element
 
   init() {
     this._render();
@@ -60,7 +64,208 @@ const FileManagerModule = {
         this.refresh();
       });
     });
+
+    // Create the floating bulk-action bar (hidden by default)
+    this._ensureBulkBar();
   },
+
+  // ── Bulk action bar ────────────────────────────────────────────────────────
+
+  _ensureBulkBar() {
+    if (document.getElementById('bulk-action-bar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'bulk-action-bar';
+    bar.className = 'bulk-action-bar hidden';
+    bar.innerHTML = `
+      <div class="bulk-bar-info">
+        <span class="bulk-count" id="bulk-count">0 selected</span>
+        <button class="bulk-deselect" id="bulk-deselect" title="Clear selection">✕</button>
+      </div>
+      <div class="bulk-bar-actions">
+        <button class="btn btn-ghost btn-sm bulk-btn" id="bulk-btn-download" title="Download selected files one by one">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M2 13h12"/></svg>
+          DOWNLOAD ALL
+        </button>
+        <button class="btn btn-ghost btn-sm bulk-btn" id="bulk-btn-share" title="Create share links for selected public files">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="4" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="12" cy="12" r="2"/><path d="M6 7l4-2M6 9l4 2"/></svg>
+          SHARE LINKS
+        </button>
+        <button class="btn btn-danger btn-sm bulk-btn" id="bulk-btn-delete" title="Delete selected files">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9"/></svg>
+          DELETE ALL
+        </button>
+      </div>
+    `;
+    document.body.appendChild(bar);
+    this._bulkBar = bar;
+
+    bar.querySelector('#bulk-deselect').addEventListener('click', () => this._clearSelection());
+    bar.querySelector('#bulk-btn-download').addEventListener('click', () => this._bulkDownload());
+    bar.querySelector('#bulk-btn-share').addEventListener('click', () => this._bulkShare());
+    bar.querySelector('#bulk-btn-delete').addEventListener('click', () => this._bulkDelete());
+  },
+
+  _updateBulkBar() {
+    const bar = document.getElementById('bulk-action-bar');
+    if (!bar) return;
+    const n = this._selected.size;
+    if (n === 0) {
+      bar.classList.add('hidden');
+    } else {
+      bar.classList.remove('hidden');
+      bar.querySelector('#bulk-count').textContent = `${n} file${n !== 1 ? 's' : ''} selected`;
+    }
+  },
+
+  _clearSelection() {
+    this._selected.clear();
+    // Uncheck all checkboxes and remove row highlights
+    document.querySelectorAll('.fm-checkbox').forEach((cb) => { cb.checked = false; });
+    document.querySelectorAll('.file-row-selected').forEach((el) => el.classList.remove('file-row-selected'));
+    document.querySelectorAll('.file-card-selected').forEach((el) => el.classList.remove('file-card-selected'));
+    this._updateBulkBar();
+  },
+
+  _toggleSelect(id) {
+    if (this._selected.has(id)) {
+      this._selected.delete(id);
+    } else {
+      this._selected.add(id);
+    }
+    this._updateBulkBar();
+  },
+
+  // ── Bulk operations ────────────────────────────────────────────────────────
+
+  /**
+   * Download selected files one by one automatically.
+   * Uses a hidden <a> with a small delay between each to avoid browser blocking.
+   */
+  async _bulkDownload() {
+    const ids = [...this._selected];
+    if (ids.length === 0) return;
+
+    Notifications.info(`DOWNLOADING ${ids.length} FILE${ids.length !== 1 ? 'S' : ''}`, 'Files will download one by one');
+
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const f = this._files.find((f) => f.id === id);
+      const name = f ? f.name : id;
+
+      // Create a temporary anchor and click it — browser handles the download
+      const a = document.createElement('a');
+      a.href = `/api/files/${id}/download`;
+      a.download = name;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // Wait between downloads so the browser doesn't block them as a popup storm
+      if (i < ids.length - 1) {
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+
+    Notifications.success('DOWNLOADS STARTED', `${ids.length} file${ids.length !== 1 ? 's' : ''} queued`);
+  },
+
+  /**
+   * Create share links for all selected files.
+   * Files that are already public use their existing share_token.
+   * Private files are made public first, then their link is collected.
+   * All links are copied to clipboard, one per line.
+   */
+  async _bulkShare() {
+    const ids = [...this._selected];
+    if (ids.length === 0) return;
+
+    const links = [];
+    const errors = [];
+
+    for (const id of ids) {
+      const f = this._files.find((f) => f.id === id);
+      if (!f) continue;
+
+      try {
+        // If not already public, make it public first
+        if (!f.is_public || !f.share_token) {
+          const res = await fetch(`/api/files/${id}/visibility`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isPublic: true }),
+            credentials: 'same-origin',
+          });
+          if (!res.ok) throw new Error('Visibility change failed');
+          const data = await res.json();
+          f.is_public = true;
+          f.share_token = data.shareToken;
+          // Update the toggle in the DOM if visible
+          document.querySelectorAll(`.vis-toggle[data-id="${id}"]`).forEach((btn) => {
+            btn.dataset.public = 'true';
+            btn.classList.add('is-public');
+            btn.title = 'Public — click to make private';
+            const label = btn.querySelector('.vis-toggle-label');
+            if (label) label.textContent = 'Public';
+          });
+        }
+
+        if (f.share_token) {
+          links.push(`${location.origin}/api/files/s/${f.share_token}/download`);
+        }
+      } catch (err) {
+        errors.push(f.name || id);
+      }
+    }
+
+    if (links.length > 0) {
+      await Utils.copyToClipboard(links.join('\n'));
+      Notifications.success(
+        `${links.length} SHARE LINK${links.length !== 1 ? 'S' : ''} COPIED`,
+        'All links copied to clipboard'
+      );
+    }
+
+    if (errors.length > 0) {
+      Notifications.error(`${errors.length} file${errors.length !== 1 ? 's' : ''} failed`, errors.join(', '));
+    }
+  },
+
+  /**
+   * Delete all selected files after confirmation.
+   */
+  async _bulkDelete() {
+    const ids = [...this._selected];
+    if (ids.length === 0) return;
+
+    const confirmed = await Utils.confirm(
+      `Delete ${ids.length} file${ids.length !== 1 ? 's' : ''}? This cannot be undone.`,
+      'Delete All'
+    );
+    if (!confirmed) return;
+
+    let deleted = 0;
+    let failed = 0;
+
+    for (const id of ids) {
+      const res = await fetch(`/api/files/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+      if (res.ok) {
+        deleted++;
+        this._files = this._files.filter((f) => f.id !== id);
+      } else {
+        failed++;
+      }
+    }
+
+    this._selected.clear();
+    this._updateBulkBar();
+    this._renderFiles();
+
+    if (deleted > 0) Notifications.success(`${deleted} file${deleted !== 1 ? 's' : ''} deleted`);
+    if (failed > 0) Notifications.error(`${failed} deletion${failed !== 1 ? 's' : ''} failed`);
+  },
+
+  // ── Rendering ──────────────────────────────────────────────────────────────
 
   _renderFiles() {
     const content = document.getElementById('files-content');
@@ -77,6 +282,11 @@ const FileManagerModule = {
         <table class="file-list">
           <thead>
             <tr>
+              <th class="col-check">
+                <label class="fm-check-label" title="Select all">
+                  <input type="checkbox" class="fm-checkbox fm-checkbox-all" aria-label="Select all files" />
+                </label>
+              </th>
               <th>NAME</th>
               <th>SIZE</th>
               <th>UPLOADED D&T</th>
@@ -91,6 +301,20 @@ const FileManagerModule = {
         </table>
         </div>
       `;
+
+      // Select-all checkbox
+      const allCb = content.querySelector('.fm-checkbox-all');
+      allCb.checked = this._selected.size === this._files.length && this._files.length > 0;
+      allCb.indeterminate = this._selected.size > 0 && this._selected.size < this._files.length;
+      allCb.addEventListener('change', () => {
+        if (allCb.checked) {
+          this._files.forEach((f) => this._selected.add(f.id));
+        } else {
+          this._selected.clear();
+        }
+        this._renderFiles();
+        this._updateBulkBar();
+      });
     } else {
       content.innerHTML = `<div class="file-grid">${this._files.map((f) => this._gridCard(f)).join('')}</div>`;
     }
@@ -135,8 +359,14 @@ const FileManagerModule = {
 
   _listRow(f) {
     const cls = Utils.expiryClass(f.expires_at);
+    const isSelected = this._selected.has(f.id);
     return `
-      <tr>
+      <tr class="${isSelected ? 'file-row-selected' : ''}">
+        <td class="col-check">
+          <label class="fm-check-label">
+            <input type="checkbox" class="fm-checkbox" data-id="${f.id}" ${isSelected ? 'checked' : ''} aria-label="Select ${Utils.escape(f.name)}" />
+          </label>
+        </td>
         <td><span class="file-name" title="${Utils.escape(f.name)}">${Utils.escape(f.name)}</span></td>
         <td class="file-size">${Utils.formatBytes(f.size_bytes)}</td>
         <td class="file-size">${this._formatIST(f.created_at)}</td>
@@ -148,8 +378,12 @@ const FileManagerModule = {
   },
 
   _gridCard(f) {
+    const isSelected = this._selected.has(f.id);
     return `
-      <div class="file-card">
+      <div class="file-card ${isSelected ? 'file-card-selected' : ''}">
+        <label class="fm-check-label fm-check-card">
+          <input type="checkbox" class="fm-checkbox" data-id="${f.id}" ${isSelected ? 'checked' : ''} aria-label="Select ${Utils.escape(f.name)}" />
+        </label>
         <div class="file-card-name" title="${Utils.escape(f.name)}">${Utils.escape(f.name)}</div>
         <div class="file-card-meta">${Utils.formatBytes(f.size_bytes)}</div>
         <div class="file-card-meta" style="font-size:0.7rem;color:var(--color-text-dim)">${this._formatIST(f.created_at)}</div>
@@ -163,10 +397,31 @@ const FileManagerModule = {
     this._actionsAbort = new AbortController();
     const sig = { signal: this._actionsAbort.signal };
 
+    // Handle checkbox changes (individual row/card checkboxes)
+    root.addEventListener('change', (e) => {
+      const cb = e.target.closest('.fm-checkbox:not(.fm-checkbox-all)');
+      if (!cb) return;
+      const id = cb.dataset.id;
+      if (!id) return;
+      this._toggleSelect(id);
+      // Highlight the row/card
+      const row = cb.closest('tr');
+      const card = cb.closest('.file-card');
+      if (row) row.classList.toggle('file-row-selected', cb.checked);
+      if (card) card.classList.toggle('file-card-selected', cb.checked);
+      // Update select-all checkbox state
+      const allCb = root.querySelector('.fm-checkbox-all');
+      if (allCb) {
+        allCb.checked = this._selected.size === this._files.length;
+        allCb.indeterminate = this._selected.size > 0 && this._selected.size < this._files.length;
+      }
+    }, sig);
+
     root.addEventListener('mousedown', (e) => {
       const btn = e.target.closest('[data-action="visibility"]');
       if (btn) e.preventDefault();
     }, sig);
+
     root.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
@@ -221,7 +476,6 @@ const FileManagerModule = {
   },
 
   _extendExpiry(id, anchorEl) {
-    // Remove any existing popover
     document.getElementById('expiry-popover')?.remove();
 
     const opts = [
@@ -243,7 +497,6 @@ const FileManagerModule = {
       </div>
     `;
 
-    // Position near the anchor button
     document.body.appendChild(pop);
     const rect = anchorEl.getBoundingClientRect();
     const popW = pop.offsetWidth;
@@ -289,7 +542,6 @@ const FileManagerModule = {
       });
     });
 
-    // Close on outside click
     setTimeout(() => document.addEventListener('click', function handler(e) {
       if (!pop.contains(e.target)) { cleanup(); document.removeEventListener('click', handler); }
     }), 0);
@@ -299,7 +551,9 @@ const FileManagerModule = {
     const res = await fetch(`/api/files/${id}`, { method: 'DELETE', credentials: 'same-origin' });
     if (res.ok) {
       this._files = this._files.filter((f) => f.id !== id);
+      this._selected.delete(id);
       this._renderFiles();
+      this._updateBulkBar();
       Notifications.success('File deleted');
     } else {
       Notifications.error('Delete failed');

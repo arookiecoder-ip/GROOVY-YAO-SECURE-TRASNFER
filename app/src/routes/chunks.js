@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const fs = require('fs');
+const fsPromises = require('fs/promises');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../db/db');
@@ -10,13 +11,16 @@ const {
   decryptFilename,
 } = require('../services/encryption');
 const { broadcast } = require('./ws');
+const { validateFileType, MAGIC_BYTES_SAMPLE } = require('../middleware/fileType');
 
 const EXPIRY_OPTIONS = {
-  '1h':  60 * 60 * 1000,
-  '6h':  6 * 60 * 60 * 1000,
-  '24h': 24 * 60 * 60 * 1000,
-  '7d':  7 * 24 * 60 * 60 * 1000,
-  '30d': 30 * 24 * 60 * 60 * 1000,
+  '1h':    60 * 60 * 1000,
+  '6h':    6 * 60 * 60 * 1000,
+  '24h':   24 * 60 * 60 * 1000,
+  '7d':    7 * 24 * 60 * 60 * 1000,
+  '30d':   30 * 24 * 60 * 60 * 1000,
+  // Fix #6: include 'never' so upload-request files don't silently get 24h expiry
+  'never': null,
 };
 
 function ipHash(ip) {
@@ -27,7 +31,12 @@ function ipHash(ip) {
 }
 
 function chunkDir(uploadId) {
-  return path.join(config.chunksPath, uploadId);
+  // Fix #1: guard against path traversal via uploadId
+  const resolved = path.resolve(config.chunksPath, uploadId);
+  if (!resolved.startsWith(path.resolve(config.chunksPath) + path.sep)) {
+    throw new Error('Invalid upload ID');
+  }
+  return resolved;
 }
 
 function chunkFile(uploadId, index) {
@@ -35,7 +44,12 @@ function chunkFile(uploadId, index) {
 }
 
 function storagePath(storageId) {
-  return path.join(config.storagePath, storageId);
+  // Fix #1: guard against path traversal via storageId
+  const resolved = path.resolve(config.storagePath, storageId);
+  if (!resolved.startsWith(path.resolve(config.storagePath) + path.sep)) {
+    throw new Error('Invalid storage ID');
+  }
+  return resolved;
 }
 
 async function chunksRoutes(fastify) {
@@ -112,7 +126,8 @@ async function chunksRoutes(fastify) {
       return reply.code(500).send({ error: 'Chunk receive failed' });
     }
 
-    fs.writeFileSync(outPath, Buffer.concat(chunks));
+    // Fix #16: use async write to avoid blocking the event loop
+    await fsPromises.writeFile(outPath, Buffer.concat(chunks));
 
     const now = Date.now();
     db.prepare(`
@@ -208,9 +223,28 @@ async function chunksRoutes(fastify) {
     const actualSha = plainHasher.digest('hex');
 
     const totalSize = received.reduce((s, c) => s + c.size_bytes, 0);
-    const expiryMs = EXPIRY_OPTIONS[upload.expires_in] ?? EXPIRY_OPTIONS['24h'];
+    // Fix #6: handle 'never' expiry — null means no expiry
+    const expiryMs = upload.expires_in in EXPIRY_OPTIONS
+      ? EXPIRY_OPTIONS[upload.expires_in]
+      : EXPIRY_OPTIONS['24h'];
     const now = Date.now();
-    const expiresAt = now + expiryMs;
+    const expiresAt = expiryMs !== null ? now + expiryMs : null;
+
+    // Fix #2: validate file type using the first chunk's magic bytes
+    try {
+      const firstChunkPath = chunkFile(uploadId, received[0].chunk_index);
+      const fd = await fsPromises.open(firstChunkPath, 'r');
+      const sampleBuf = Buffer.alloc(MAGIC_BYTES_SAMPLE);
+      const { bytesRead } = await fd.read(sampleBuf, 0, MAGIC_BYTES_SAMPLE, 0);
+      await fd.close();
+      const typeCheck = await validateFileType(sampleBuf.slice(0, bytesRead), upload.original_name);
+      if (!typeCheck.ok) {
+        fs.unlink(outPath, () => {});
+        return reply.code(415).send({ error: typeCheck.reason });
+      }
+    } catch (err) {
+      req.log.warn(err, 'file type validation failed during finalize — allowing through');
+    }
 
     const { ciphertext: encName, iv: nameIv, tag: nameTag } = encryptFilename(upload.original_name.trim(), fileId);
 
@@ -224,7 +258,6 @@ async function chunksRoutes(fastify) {
       keydata.salt + ':' + keydata.iv, keydata.tag + ':' + nameTag,
       expiresAt, now,
     );
-
     db.prepare(`
       INSERT INTO transfer_history (id, event_type, file_id, size_bytes, ip_hash, timestamp, metadata)
       VALUES (?,?,?,?,?,?,?)

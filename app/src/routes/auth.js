@@ -353,8 +353,8 @@ async function authRoutes(fastify) {
     return reply.send({ qrDataUrl });
   });
 
+  // Fix #3: merged duplicate config keys into one object
   fastify.post('/totp/verify', {
-    config: { noAuth: true },
     config: {
       noAuth: true,
       rateLimit: { max: 5, timeWindow: '10 minutes' },
@@ -400,7 +400,8 @@ async function authRoutes(fastify) {
     config: { rateLimit: { max: 5, timeWindow: '10 minutes' } }
   }, async (_req, reply) => {
     const db = getDb();
-    const codes = Array.from({ length: 8 }, () => crypto.randomBytes(4).toString('hex'));
+    // Fix #10: use 8 bytes (64-bit) entropy per code instead of 4 bytes (32-bit)
+    const codes = Array.from({ length: 8 }, () => crypto.randomBytes(8).toString('hex'));
     const hashes = codes.map((c) => crypto.createHash('sha256').update(c).digest('hex'));
     db.prepare('UPDATE totp_config SET backup_codes = ? WHERE id = 1').run(JSON.stringify(hashes));
     return reply.send({ codes });

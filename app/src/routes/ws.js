@@ -3,12 +3,16 @@ const { verifyAccessToken, getSession } = require('../services/auth');
 // Connected clients: sessionId -> Set<WebSocket>
 const _clients = new Map();
 
+// Fix #5: use proper cookie parsing instead of fragile manual split
+// Cookie values can contain '=' (e.g. base64), so only split on the first '='
 function _getToken(req) {
-  // Cookie header parsing (raw upgrade request)
   const cookieHeader = req.headers.cookie || '';
   for (const part of cookieHeader.split(';')) {
-    const [k, v] = part.trim().split('=');
-    if (k === 'access_token') return v;
+    const eqIdx = part.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = part.slice(0, eqIdx).trim();
+    const val = part.slice(eqIdx + 1).trim();
+    if (key === 'access_token') return val;
   }
   return null;
 }
@@ -41,6 +45,7 @@ async function wsRoutes(fastify) {
         set.delete(socket);
         if (set.size === 0) _clients.delete(sessionId);
       }
+      clearInterval(ping);
     });
 
     socket.on('error', () => socket.close());
@@ -53,8 +58,6 @@ async function wsRoutes(fastify) {
         clearInterval(ping);
       }
     }, 25000);
-
-    socket.on('close', () => clearInterval(ping));
   });
 }
 

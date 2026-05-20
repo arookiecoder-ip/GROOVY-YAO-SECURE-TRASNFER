@@ -9,6 +9,8 @@ function getDb() {
     _db = new Database(dbPath);
     _db.pragma('journal_mode = WAL');
     _db.pragma('foreign_keys = ON');
+    // Fix #20: prevent SQLITE_BUSY errors under concurrent load
+    _db.pragma('busy_timeout = 5000');
   }
   return _db;
 }

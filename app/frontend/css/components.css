@@ -476,3 +476,154 @@
   margin-left: auto;
   flex-shrink: 0;
 }
+
+/* ── Multi-select checkboxes ── */
+.col-check {
+  width: 36px;
+  padding: 0 8px !important;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.fm-check-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.fm-checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--color-cyan);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Checkbox in grid card — top-right corner */
+.fm-check-card {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+
+/* Make grid cards position:relative so the checkbox can be absolute */
+.file-card {
+  position: relative;
+}
+
+/* Selected row highlight */
+.file-row-selected td {
+  background: rgba(0, 245, 255, 0.06) !important;
+}
+.file-row-selected td:first-child {
+  border-left: 2px solid var(--color-cyan);
+}
+
+/* Selected card highlight */
+.file-card-selected {
+  border-color: var(--color-cyan) !important;
+  background: rgba(0, 245, 255, 0.06) !important;
+}
+
+/* ── Floating bulk-action bar ── */
+.bulk-action-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--color-surface, #0d1117);
+  border: 1px solid var(--color-cyan);
+  box-shadow: 0 0 24px rgba(0, 245, 255, 0.2), 0 4px 16px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  animation: bulk-bar-in 0.18s ease;
+}
+
+.bulk-action-bar.hidden {
+  display: none;
+}
+
+@keyframes bulk-bar-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.bulk-bar-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+  border-right: 1px solid var(--color-border2);
+}
+
+.bulk-count {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-cyan);
+  letter-spacing: 0.08em;
+}
+
+.bulk-deselect {
+  background: none;
+  border: none;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 2px 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.bulk-deselect:hover { color: var(--color-text-bright); }
+
+.bulk-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  padding: 6px 12px;
+}
+
+/* Mobile: stack bulk bar vertically on small screens */
+@media (max-width: 540px) {
+  .bulk-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    transform: none;
+    gap: 8px;
+  }
+  .bulk-bar-info {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border2);
+    padding-right: 0;
+    padding-bottom: 8px;
+    justify-content: space-between;
+  }
+  .bulk-bar-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .bulk-btn {
+    flex: 1;
+    justify-content: center;
+  }
+  /* Hide checkbox column header on mobile (already hidden rows) */
+  .file-list th.col-check { display: none; }
+  .file-list td.col-check { display: table-cell; width: 32px; padding: 0 4px !important; }
+}

@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const fs = require('fs');
+const fsPromises = require('fs/promises');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../db/db');
@@ -9,6 +10,7 @@ const {
   encryptFilename,
 } = require('../services/encryption');
 const { broadcast } = require('./ws');
+const { validateFileType, MAGIC_BYTES_SAMPLE } = require('../middleware/fileType');
 
 const MAX_SIZE = 10 * 1024 * 1024 * 1024; // 10 GB
 const TOKEN_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days to use the link
@@ -21,7 +23,12 @@ function ipHash(ip) {
 }
 
 function storagePath(storageId) {
-  return path.join(config.storagePath, storageId);
+  // Fix #1: guard against path traversal via storageId
+  const resolved = path.resolve(config.storagePath, storageId);
+  if (!resolved.startsWith(path.resolve(config.storagePath) + path.sep)) {
+    throw new Error('Invalid storage ID');
+  }
+  return resolved;
 }
 
 function uploadLandingPage(state, token, nonce) {
@@ -425,18 +432,25 @@ async function uploadRequestRoutes(fastify) {
   fastify.post('/u/:token/upload', { config: { public: true } }, async (req, reply) => {
     const db = getDb();
 
-    // Atomic check-and-increment
-    const row = db.prepare('SELECT * FROM upload_requests WHERE token = ? AND used = 0').get(req.params.token);
-    if (!row) return reply.code(410).send({ error: 'Link already used or invalid' });
-    if (row.expires_at < Date.now()) return reply.code(410).send({ error: 'Link expired' });
+    // Fix #7: atomic check-and-increment in a single transaction to eliminate race condition
+    const consumeToken = db.transaction((token) => {
+      const row = db.prepare('SELECT * FROM upload_requests WHERE token = ? AND used = 0').get(token);
+      if (!row) return null;
+      if (row.expires_at < Date.now()) return { expired: true };
 
-    const maxUses = row.max_uses ?? 1;
-    const newCount = (row.use_count ?? 0) + 1;
-    const exhausted = maxUses !== 0 && newCount >= maxUses;
-    const updated = db.prepare(
-      'UPDATE upload_requests SET use_count = ?, used = ? WHERE token = ? AND used = 0'
-    ).run(newCount, exhausted ? 1 : 0, req.params.token);
-    if (updated.changes === 0) return reply.code(410).send({ error: 'Link already used' });
+      const maxUses = row.max_uses ?? 1;
+      const newCount = (row.use_count ?? 0) + 1;
+      const exhausted = maxUses !== 0 && newCount >= maxUses;
+      const updated = db.prepare(
+        'UPDATE upload_requests SET use_count = ?, used = ? WHERE token = ? AND used = 0'
+      ).run(newCount, exhausted ? 1 : 0, token);
+      if (updated.changes === 0) return null; // lost the race
+      return { row, newCount };
+    });
+
+    const result = consumeToken(req.params.token);
+    if (!result) return reply.code(410).send({ error: 'Link already used or invalid' });
+    if (result.expired) return reply.code(410).send({ error: 'Link expired' });
 
     const data = await req.file({ limits: { fileSize: MAX_SIZE } });
     if (!data) return reply.code(400).send({ error: 'No file' });
@@ -456,14 +470,20 @@ async function uploadRequestRoutes(fastify) {
     encStream.once('keydata', (kd) => { keydata = kd; });
 
     let totalSize = 0;
+    // Fix #2: collect first bytes for file type validation
+    let magicBuf = null;
 
     try {
       await new Promise((resolve, reject) => {
         data.file.on('data', (chunk) => {
           hasher.update(chunk);
           totalSize += chunk.length;
-          encStream.write(chunk);
+          if (!magicBuf) magicBuf = chunk.slice(0, MAGIC_BYTES_SAMPLE);
+          // Fix #17: respect backpressure
+          const ok = encStream.write(chunk);
+          if (!ok) data.file.pause();
         });
+        encStream.on('drain', () => data.file.resume());
         data.file.on('end', () => encStream.end());
         data.file.on('error', reject);
         encStream.pipe(outStream);
@@ -480,6 +500,15 @@ async function uploadRequestRoutes(fastify) {
     if (!keydata) {
       fs.unlink(filePath, () => {});
       return reply.code(500).send({ error: 'Encryption key not generated' });
+    }
+
+    // Fix #2: validate file type via magic bytes
+    if (magicBuf) {
+      const typeCheck = await validateFileType(magicBuf, data.filename);
+      if (!typeCheck.ok) {
+        fs.unlink(filePath, () => {});
+        return reply.code(415).send({ error: typeCheck.reason });
+      }
     }
 
     const sha256 = hasher.digest('hex');
@@ -512,9 +541,6 @@ async function uploadRequestRoutes(fastify) {
   // ── Chunked init via token (public) ─────────────────────────────────────
   fastify.post('/u/:token/chunked/init', { config: { public: true } }, async (req, reply) => {
     const db = getDb();
-    const row = db.prepare('SELECT * FROM upload_requests WHERE token = ? AND used = 0').get(req.params.token);
-    if (!row) return reply.code(410).send({ error: 'Link already used or invalid' });
-    if (row.expires_at < Date.now()) return reply.code(410).send({ error: 'Link expired' });
 
     const { filename, mimeType, totalSize, totalChunks } = req.body || {};
     if (!filename || !mimeType || !totalSize || !totalChunks) {
@@ -523,13 +549,25 @@ async function uploadRequestRoutes(fastify) {
     if (totalSize > MAX_SIZE) return reply.code(413).send({ error: 'File exceeds 10 GB limit' });
     if (totalChunks < 1 || totalChunks > 10000) return reply.code(400).send({ error: 'Invalid chunk count' });
 
-    const maxUses = row.max_uses ?? 1;
-    const newCount = (row.use_count ?? 0) + 1;
-    const exhausted = maxUses !== 0 && newCount >= maxUses;
-    const updated = db.prepare(
-      'UPDATE upload_requests SET use_count = ?, used = ? WHERE token = ? AND used = 0'
-    ).run(newCount, exhausted ? 1 : 0, req.params.token);
-    if (updated.changes === 0) return reply.code(410).send({ error: 'Link already used' });
+    // Fix #7: atomic check-and-increment in a transaction to eliminate race condition
+    const consumeToken = db.transaction((token) => {
+      const row = db.prepare('SELECT * FROM upload_requests WHERE token = ? AND used = 0').get(token);
+      if (!row) return null;
+      if (row.expires_at < Date.now()) return { expired: true };
+
+      const maxUses = row.max_uses ?? 1;
+      const newCount = (row.use_count ?? 0) + 1;
+      const exhausted = maxUses !== 0 && newCount >= maxUses;
+      const updated = db.prepare(
+        'UPDATE upload_requests SET use_count = ?, used = ? WHERE token = ? AND used = 0'
+      ).run(newCount, exhausted ? 1 : 0, token);
+      if (updated.changes === 0) return null;
+      return { row };
+    });
+
+    const result = consumeToken(req.params.token);
+    if (!result) return reply.code(410).send({ error: 'Link already used or invalid' });
+    if (result.expired) return reply.code(410).send({ error: 'Link expired' });
 
     const uploadId = uuidv4();
     const now = Date.now();
@@ -571,7 +609,13 @@ async function uploadRequestRoutes(fastify) {
     const data = await req.file();
     if (!data) return reply.code(400).send({ error: 'No chunk data' });
 
-    const chunkPath = path.join(config.chunksPath, uploadId, `${chunkIndex}.chunk`);
+    // Fix #1: validate path before writing
+    const chunksBase = path.resolve(config.chunksPath);
+    const chunkPath = path.resolve(config.chunksPath, uploadId, `${chunkIndex}.chunk`);
+    if (!chunkPath.startsWith(chunksBase + path.sep)) {
+      return reply.code(400).send({ error: 'Invalid upload ID' });
+    }
+
     const chunks = [];
     let size = 0;
 
@@ -586,7 +630,8 @@ async function uploadRequestRoutes(fastify) {
       return reply.code(500).send({ error: 'Chunk receive failed' });
     }
 
-    fs.writeFileSync(chunkPath, Buffer.concat(chunks));
+    // Fix #16: async write to avoid blocking the event loop
+    await fsPromises.writeFile(chunkPath, Buffer.concat(chunks));
     const now = Date.now();
     db.prepare('INSERT INTO upload_chunks (upload_id, chunk_index, size_bytes, sha256, received_at) VALUES (?,?,?,?,?)')
       .run(uploadId, chunkIndex, size, '', now);
