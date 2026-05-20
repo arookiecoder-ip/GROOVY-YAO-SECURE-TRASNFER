@@ -317,10 +317,15 @@ const FileManagerModule = {
   },
 
   _actionBar(f) {
+    const isPreviewable = f.mime_type && (f.mime_type.startsWith('image/') || f.mime_type === 'application/pdf');
     return `
       <button class="act-btn" data-action="download" data-id="${f.id}" title="Download">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M2 13h12"/></svg>
       </button>
+      ${isPreviewable ? `
+      <button class="act-btn" data-action="preview" data-id="${f.id}" data-mime="${f.mime_type}" data-name="${Utils.escape(f.name)}" title="Preview">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg>
+      </button>` : ''}
       <button class="act-btn${f.is_public ? '' : ' act-btn--disabled'}" data-action="${f.is_public ? 'qr' : ''}" data-id="${f.id}" title="${f.is_public ? 'QR Code' : 'Make public to share'}" ${f.is_public ? '' : 'disabled'}>
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="5" height="5" rx="0.5"/><rect x="10" y="1" width="5" height="5" rx="0.5"/><rect x="1" y="10" width="5" height="5" rx="0.5"/><rect x="2.5" y="2.5" width="2" height="2"/><rect x="11.5" y="2.5" width="2" height="2"/><rect x="2.5" y="11.5" width="2" height="2"/><path d="M10 10h2v2h-2zM12 12h3M12 10h3v2M10 12v3"/></svg>
       </button>
@@ -405,6 +410,8 @@ const FileManagerModule = {
       const { action, id } = btn.dataset;
       if (action === 'download') {
         window.location.href = `/api/files/${id}/download`;
+      } else if (action === 'preview') {
+        this._showPreview(id, btn.dataset.mime, btn.dataset.name);
       } else if (action === 'copylink') {
         const f = this._files.find((f) => f.id === id);
         if (!f || !f.share_token) { Notifications.error('No public link — make file public first'); return; }
@@ -425,6 +432,54 @@ const FileManagerModule = {
         await this._deleteFile(id);
       }
     }, sig);
+  },
+
+  _showPreview(id, mime, name) {
+    document.getElementById('file-preview-modal')?.remove();
+
+    const isPdf = mime === 'application/pdf';
+    const isImage = mime && mime.startsWith('image/');
+    const previewUrl = `/api/files/${id}/preview`;
+
+    const modal = document.createElement('div');
+    modal.id = 'file-preview-modal';
+    modal.className = 'preview-overlay';
+    modal.innerHTML = `
+      <div class="preview-box">
+        <div class="preview-header">
+          <span class="preview-title" title="${Utils.escape(name)}">${Utils.escape(name)}</span>
+          <div class="preview-header-actions">
+            <a href="/api/files/${id}/download" class="btn btn-ghost btn-sm" download="${Utils.escape(name)}" title="Download">⬇ DOWNLOAD</a>
+            <button class="drawer-close" id="preview-close" aria-label="Close">✕</button>
+          </div>
+        </div>
+        <div class="preview-body" id="preview-body">
+          <div class="preview-loading">LOADING...</div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const body = modal.querySelector('#preview-body');
+
+    if (isImage) {
+      const img = document.createElement('img');
+      img.className = 'preview-image';
+      img.alt = name;
+      img.onload = () => { body.innerHTML = ''; body.appendChild(img); };
+      img.onerror = () => { body.innerHTML = '<div class="preview-error">Failed to load image</div>'; };
+      img.src = previewUrl;
+    } else if (isPdf) {
+      body.innerHTML = `<iframe class="preview-pdf" src="${previewUrl}" title="${Utils.escape(name)}" allowfullscreen></iframe>`;
+    }
+
+    const close = () => modal.remove();
+    modal.querySelector('#preview-close').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+    });
   },
 
   async _toggleVisibility(id, currentlyPublic) {

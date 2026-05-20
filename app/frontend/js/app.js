@@ -155,6 +155,7 @@
           if (view === 'history') HistoryModule.init();
           if (view === 'stats') StatsModule.init();
           if (view === 'upload-links') UploadLinksModule.init();
+          if (view === 'bundles') BundleLinksModule.init();
         });
       });
 
@@ -271,6 +272,7 @@
           if (view === 'history') HistoryModule.init();
           if (view === 'stats') StatsModule.init();
           if (view === 'upload-links') UploadLinksModule.init();
+          if (view === 'bundles') BundleLinksModule.init();
           closeDrawer();
         });
       });

@@ -313,7 +313,42 @@ async function filesRoutes(fastify) {
     return reply.send(decStream);
   });
 
-  // ── Download by file ID (authenticated only) ──────────────────────────────
+  // ── Preview by file ID (authenticated — inline, no download) ────────────
+  fastify.get('/files/:id/preview', async (req, reply) => {
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM files WHERE id = ? AND status = ?').get(req.params.id, 'complete');
+    if (!row) return reply.code(404).send({ error: 'File not found' });
+    if (row.expires_at && row.expires_at < Date.now()) return reply.code(410).send({ error: 'File expired' });
+
+    // Only allow previewable types
+    const mime = row.mime_type || 'application/octet-stream';
+    const previewable = mime.startsWith('image/') || mime === 'application/pdf';
+    if (!previewable) return reply.code(415).send({ error: 'Preview not supported for this file type' });
+
+    const filePath = storagePath(row.storage_id);
+    if (!fs.existsSync(filePath)) return reply.code(404).send({ error: 'Storage missing' });
+
+    const saltHex = row.encryption_iv.split(':')[0];
+
+    // Serve inline (no Content-Disposition: attachment) so browser renders it
+    reply.header('Content-Type', mime);
+    reply.header('X-Content-Type-Options', 'nosniff');
+    // Allow embedding in same-origin iframe
+    reply.header('X-Frame-Options', 'SAMEORIGIN');
+
+    const readStream = fs.createReadStream(filePath);
+    const decStream = createDecryptStream(row.id, saltHex);
+    readStream.on('error', (err) => {
+      req.log.error(err, 'read stream error during preview');
+      decStream.destroy(err);
+    });
+    decStream.on('error', (err) => {
+      req.log.error(err, 'decrypt stream error during preview');
+      if (!reply.sent) reply.raw.destroy();
+    });
+    readStream.pipe(decStream);
+    return reply.send(decStream);
+  });
   fastify.get('/files/:id/download', async (req, reply) => {
     const db = getDb();
     const row = db.prepare('SELECT * FROM files WHERE id = ? AND status = ?').get(req.params.id, 'complete');
