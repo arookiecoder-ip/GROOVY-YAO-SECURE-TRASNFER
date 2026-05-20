@@ -627,3 +627,115 @@
   .file-list th.col-check { display: none; }
   .file-list td.col-check { display: table-cell; width: 32px; padding: 0 4px !important; }
 }
+
+/* ── Share links modal ── */
+.share-links-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fade-in 0.15s ease;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.share-links-box {
+  background: var(--color-surface, #0d1117);
+  border: 1px solid var(--color-cyan);
+  padding: 20px 24px;
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 0 32px rgba(0, 245, 255, 0.15);
+  animation: slide-up 0.18s ease;
+}
+
+@keyframes slide-up {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.share-links-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.share-links-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--color-cyan);
+}
+
+.share-links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.share-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.share-link-num {
+  font-size: 0.7rem;
+  color: var(--color-text-dim);
+  width: 16px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.share-link-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-bg, #050a0e);
+  border: 1px solid var(--color-border2);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 6px 10px;
+  outline: none;
+  cursor: text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.share-link-input:focus {
+  border-color: var(--color-cyan);
+}
+
+.share-link-copy-btn {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  padding: 5px 10px;
+  min-width: 52px;
+  text-align: center;
+}
+
+.share-links-copy-all {
+  width: 100%;
+  margin-top: 4px;
+}
+
+@media (max-width: 480px) {
+  .share-links-box {
+    padding: 16px;
+  }
+  .share-link-num {
+    display: none;
+  }
+}

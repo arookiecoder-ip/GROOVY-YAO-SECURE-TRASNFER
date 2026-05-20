@@ -117,3 +117,16 @@ CREATE TABLE IF NOT EXISTS device_tokens (
     revoked INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_device_tokens_hash ON device_tokens(token_hash);
+
+-- Bundles: a single shareable link that groups multiple files
+CREATE TABLE IF NOT EXISTS bundles (
+    id TEXT PRIMARY KEY,
+    token TEXT NOT NULL UNIQUE,
+    file_ids TEXT NOT NULL,   -- JSON array of file IDs
+    label TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER,       -- NULL = never
+    download_count INTEGER DEFAULT 0,
+    revoked INTEGER DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bundles_token ON bundles(token);

@@ -86,9 +86,9 @@ const FileManagerModule = {
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M2 13h12"/></svg>
           DOWNLOAD ALL
         </button>
-        <button class="btn btn-ghost btn-sm bulk-btn" id="bulk-btn-share" title="Create share links for selected public files">
+        <button class="btn btn-ghost btn-sm bulk-btn" id="bulk-btn-share" title="Create a single bundle link for all selected files">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="4" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="12" cy="12" r="2"/><path d="M6 7l4-2M6 9l4 2"/></svg>
-          SHARE LINKS
+          CREATE BUNDLE
         </button>
         <button class="btn btn-danger btn-sm bulk-btn" id="bulk-btn-delete" title="Delete selected files">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9"/></svg>
@@ -171,63 +171,40 @@ const FileManagerModule = {
   },
 
   /**
-   * Create share links for all selected files.
-   * Files that are already public use their existing share_token.
-   * Private files are made public first, then their link is collected.
-   * All links are copied to clipboard, one per line.
+   * Create a single bundle link for all selected files.
+   * One URL — recipient opens it and can download all files from one page.
    */
   async _bulkShare() {
     const ids = [...this._selected];
     if (ids.length === 0) return;
 
-    const links = [];
-    const errors = [];
+    const btn = document.getElementById('bulk-btn-share');
+    const origText = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span style="opacity:.6">CREATING...</span>'; }
 
-    for (const id of ids) {
-      const f = this._files.find((f) => f.id === id);
-      if (!f) continue;
+    try {
+      const res = await Utils.apiFetch('/api/bundles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileIds: ids }),
+        credentials: 'same-origin',
+      });
 
-      try {
-        // If not already public, make it public first
-        if (!f.is_public || !f.share_token) {
-          const res = await Utils.apiFetch(`/api/files/${id}/visibility`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ isPublic: true }),
-            credentials: 'same-origin',
-          });
-          if (!res.ok) throw new Error('Visibility change failed');
-          const data = await res.json();
-          f.is_public = true;
-          f.share_token = data.shareToken;
-          // Update the toggle in the DOM if visible
-          document.querySelectorAll(`.vis-toggle[data-id="${id}"]`).forEach((btn) => {
-            btn.dataset.public = 'true';
-            btn.classList.add('is-public');
-            btn.title = 'Public — click to make private';
-            const label = btn.querySelector('.vis-toggle-label');
-            if (label) label.textContent = 'Public';
-          });
-        }
-
-        if (f.share_token) {
-          links.push(`${location.origin}/api/files/s/${f.share_token}/download`);
-        }
-      } catch (err) {
-        errors.push(f.name || id);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create bundle');
       }
-    }
 
-    if (links.length > 0) {
-      await Utils.copyToClipboard(links.join('\n'));
+      const { url } = await res.json();
+      await Utils.copyToClipboard(url);
       Notifications.success(
-        `${links.length} SHARE LINK${links.length !== 1 ? 'S' : ''} COPIED`,
-        'All links copied to clipboard'
+        `BUNDLE LINK CREATED`,
+        `${ids.length} file${ids.length !== 1 ? 's' : ''} — link copied to clipboard`
       );
-    }
-
-    if (errors.length > 0) {
-      Notifications.error(`${errors.length} file${errors.length !== 1 ? 's' : ''} failed`, errors.join(', '));
+    } catch (err) {
+      Notifications.error('Bundle creation failed', err.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = origText; }
     }
   },
 

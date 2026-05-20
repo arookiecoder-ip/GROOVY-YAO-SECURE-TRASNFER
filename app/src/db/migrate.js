@@ -89,6 +89,26 @@ function migrate() {
   }
 
   console.log(`[migrate] Schema applied to ${dbPath}`);
+
+  // Add bundles table if missing
+  const bundlesTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='bundles'").get();
+  if (!bundlesTable) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS bundles (
+        id TEXT PRIMARY KEY,
+        token TEXT NOT NULL UNIQUE,
+        file_ids TEXT NOT NULL,
+        label TEXT,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        download_count INTEGER DEFAULT 0,
+        revoked INTEGER DEFAULT 0
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_bundles_token ON bundles(token);
+    `);
+    console.log('[migrate] Created bundles table');
+  }
+
   db.close();
 }
 
