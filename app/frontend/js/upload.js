@@ -7,7 +7,7 @@ const UploadManager = {
   // uploadId -> { file, totalChunks, chunkShas, aborted }
   _active: {},
 
-  _selectedExpiry: '1h',
+  _selectedExpiry: 'never',
 
   init() {
     const dz = document.getElementById('drop-zone');

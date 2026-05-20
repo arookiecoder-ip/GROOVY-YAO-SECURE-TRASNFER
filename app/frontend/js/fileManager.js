@@ -1,4 +1,4 @@
-// FileManager — list/grid view, sort, expiry countdowns, multi-select
+// FileManager — list/grid view, sort, expiry countdowns, multi-select, pagination
 const FileManagerModule = {
   _files: [],
   _view: localStorage.getItem('fm-view') || 'list',
@@ -6,9 +6,13 @@ const FileManagerModule = {
   _expiryInterval: null,
   _actionsAbort: null,
 
+  // Pagination state
+  _page: 1,
+  _perPage: parseInt(localStorage.getItem('fm-perpage') || '25', 10),
+
   // Multi-select state
-  _selected: new Set(),   // Set of file IDs currently selected
-  _bulkBar: null,         // reference to the floating bulk-action bar element
+  _selected: new Set(),
+  _bulkBar: null,
 
   init() {
     this._render();
@@ -17,12 +21,14 @@ const FileManagerModule = {
 
   async refresh() {
     try {
-      const res = await fetch(`/api/files?sort=${this._sort}`, { credentials: 'same-origin' });
+      // Fetch all files at once — pagination is handled client-side
+      const res = await fetch(`/api/files?sort=${this._sort}&limit=200`, { credentials: 'same-origin' });
       if (!res.ok) return;
       const data = await res.json();
       this._files = data.files || data;
+      this._page = 1; // reset to first page on refresh
       this._renderFiles();
-    } catch { /* network error — silent */ }
+    } catch (_e) { /* network error — silent */ }
   },
 
   _render() {
@@ -37,6 +43,10 @@ const FileManagerModule = {
           <button class="sort-btn ${this._sort === 'date' ? 'active' : ''}" data-s="date">DATE</button>
           <button class="sort-btn ${this._sort === 'name' ? 'active' : ''}" data-s="name">NAME</button>
           <button class="sort-btn ${this._sort === 'size' ? 'active' : ''}" data-s="size">SIZE</button>
+        </div>
+        <div class="perpage-group">
+          <span class="perpage-label">SHOW</span>
+          ${[25, 50, 100, 0].map(n => `<button class="perpage-btn${this._perPage === n ? ' active' : ''}" data-pp="${n}">${n === 0 ? 'ALL' : n}</button>`).join('')}
         </div>
         <button class="btn btn-ghost btn-sm" id="btn-sync" title="Sync files">⟳ SYNC</button>
       </div>
@@ -62,6 +72,17 @@ const FileManagerModule = {
         container.querySelectorAll('.sort-btn').forEach((x) => x.classList.remove('active'));
         b.classList.add('active');
         this.refresh();
+      });
+    });
+
+    container.querySelectorAll('.perpage-btn').forEach((b) => {
+      b.addEventListener('click', () => {
+        this._perPage = parseInt(b.dataset.pp, 10);
+        localStorage.setItem('fm-perpage', this._perPage);
+        this._page = 1;
+        container.querySelectorAll('.perpage-btn').forEach((x) => x.classList.remove('active'));
+        b.classList.add('active');
+        this._renderFiles();
       });
     });
 
@@ -255,14 +276,39 @@ const FileManagerModule = {
       return;
     }
 
+    // Pagination
+    const total = this._files.length;
+    const perPage = this._perPage === 0 ? total : this._perPage;
+    const totalPages = Math.ceil(total / perPage);
+    this._page = Math.min(this._page, totalPages);
+    const start = (this._page - 1) * perPage;
+    const end = Math.min(start + perPage, total);
+    const pageFiles = this._files.slice(start, end);
+
+    // Pagination info string e.g. "1–25 of 87"
+    const rangeLabel = total > perPage
+      ? `<span class="fm-range">${start + 1}–${end} of ${total}</span>`
+      : `<span class="fm-range">${total} file${total !== 1 ? 's' : ''}</span>`;
+
+    // Pagination controls
+    const paginationHtml = totalPages > 1 ? `
+      <div class="fm-pagination">
+        <button class="fm-page-btn" data-pg="${this._page - 1}" ${this._page <= 1 ? 'disabled' : ''}>‹ PREV</button>
+        ${Array.from({ length: totalPages }, (_, i) => i + 1).map(p => `
+          <button class="fm-page-btn fm-page-num${p === this._page ? ' active' : ''}" data-pg="${p}">${p}</button>
+        `).join('')}
+        <button class="fm-page-btn" data-pg="${this._page + 1}" ${this._page >= totalPages ? 'disabled' : ''}>NEXT ›</button>
+      </div>` : '';
+
     if (this._view === 'list') {
       content.innerHTML = `
+        <div class="fm-table-header">${rangeLabel}</div>
         <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;max-width:100%;">
         <table class="file-list">
           <thead>
             <tr>
               <th class="col-check">
-                <label class="fm-check-label" title="Select all">
+                <label class="fm-check-label" title="Select all on this page">
                   <input type="checkbox" class="fm-checkbox fm-checkbox-all" aria-label="Select all files" />
                 </label>
               </th>
@@ -275,28 +321,48 @@ const FileManagerModule = {
             </tr>
           </thead>
           <tbody>
-            ${this._files.map((f) => this._listRow(f)).join('')}
+            ${pageFiles.map((f) => this._listRow(f)).join('')}
           </tbody>
         </table>
         </div>
+        ${paginationHtml}
       `;
 
-      // Select-all checkbox
+      // Select-all checkbox (scoped to current page)
       const allCb = content.querySelector('.fm-checkbox-all');
-      allCb.checked = this._selected.size === this._files.length && this._files.length > 0;
-      allCb.indeterminate = this._selected.size > 0 && this._selected.size < this._files.length;
+      const pageIds = pageFiles.map(f => f.id);
+      const allPageSelected = pageIds.length > 0 && pageIds.every(id => this._selected.has(id));
+      const somePageSelected = pageIds.some(id => this._selected.has(id));
+      allCb.checked = allPageSelected;
+      allCb.indeterminate = somePageSelected && !allPageSelected;
       allCb.addEventListener('change', () => {
         if (allCb.checked) {
-          this._files.forEach((f) => this._selected.add(f.id));
+          pageIds.forEach(id => this._selected.add(id));
         } else {
-          this._selected.clear();
+          pageIds.forEach(id => this._selected.delete(id));
         }
         this._renderFiles();
         this._updateBulkBar();
       });
     } else {
-      content.innerHTML = `<div class="file-grid">${this._files.map((f) => this._gridCard(f)).join('')}</div>`;
+      content.innerHTML = `
+        <div class="fm-table-header">${rangeLabel}</div>
+        <div class="file-grid">${pageFiles.map((f) => this._gridCard(f)).join('')}</div>
+        ${paginationHtml}
+      `;
     }
+
+    // Bind pagination button clicks
+    content.querySelectorAll('.fm-page-btn[data-pg]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const pg = parseInt(btn.dataset.pg, 10);
+        if (pg < 1 || pg > totalPages) return;
+        this._page = pg;
+        this._renderFiles();
+        // Scroll file list into view
+        document.getElementById('files-content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
 
     this._bindActions(content);
     this._startExpiryCountdown(content);
@@ -586,6 +652,10 @@ const FileManagerModule = {
     if (res.ok) {
       this._files = this._files.filter((f) => f.id !== id);
       this._selected.delete(id);
+      // If current page is now empty, go back one page
+      const perPage = this._perPage === 0 ? this._files.length || 1 : this._perPage;
+      const totalPages = Math.max(1, Math.ceil(this._files.length / perPage));
+      if (this._page > totalPages) this._page = totalPages;
       this._renderFiles();
       this._updateBulkBar();
       Notifications.success('File deleted');
