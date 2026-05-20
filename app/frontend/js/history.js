@@ -41,7 +41,7 @@ const HistoryModule = {
 
     container.querySelector('#btn-clear-history').addEventListener('click', async () => {
       if (!await Utils.confirm('Clear all transfer history?', 'Clear')) return;
-      await fetch('/api/history', { method: 'DELETE', credentials: 'same-origin' });
+      await Utils.apiFetch('/api/history', { method: 'DELETE', credentials: 'same-origin' });
       this.init();
     });
   },

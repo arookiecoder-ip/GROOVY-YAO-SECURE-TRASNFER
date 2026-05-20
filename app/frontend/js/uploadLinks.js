@@ -97,7 +97,7 @@ const UploadLinksModule = {
         btn.disabled = true;
         btn.textContent = '...';
         try {
-          const res = await fetch(`/api/upload-requests/${btn.dataset.id}`, {
+          const res = await Utils.apiFetch(`/api/upload-requests/${btn.dataset.id}`, {
             method: 'DELETE', credentials: 'same-origin',
           });
           if (!res.ok) throw new Error('Failed');

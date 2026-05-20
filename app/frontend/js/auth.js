@@ -32,8 +32,7 @@ const AuthModule = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...this._encodeCredential(credential), rememberDevice: remember }),
         credentials: 'same-origin',
-      });
-      if (!completeRes.ok) {
+      });      if (!completeRes.ok) {
         const err = await completeRes.json().catch(() => ({}));
         throw new Error(err.message || 'Authentication failed');
       }
@@ -61,8 +60,7 @@ const AuthModule = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ totpToken, password, rememberDevice: document.getElementById('remember-device')?.checked || false }),
         credentials: 'same-origin',
-      });
-      if (!res.ok) {
+      });      if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Invalid credentials');
       }

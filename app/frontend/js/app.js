@@ -204,7 +204,7 @@
           max_uses = parseInt(document.getElementById('ul-multi-count').value, 10) || 10;
         }
         try {
-          const res = await fetch('/api/upload-requests', {
+          const res = await Utils.apiFetch('/api/upload-requests', {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
@@ -228,7 +228,7 @@
 
       // Logout
       document.getElementById('btn-logout').addEventListener('click', async () => {
-        await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+        await Utils.apiFetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
         location.reload();
       });
 
@@ -292,7 +292,7 @@
 
       // Drawer logout
       document.getElementById('drawer-btn-logout').addEventListener('click', async () => {
-        await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+        await Utils.apiFetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
         location.reload();
       });
 

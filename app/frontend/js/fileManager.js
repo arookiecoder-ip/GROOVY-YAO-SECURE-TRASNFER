@@ -190,7 +190,7 @@ const FileManagerModule = {
       try {
         // If not already public, make it public first
         if (!f.is_public || !f.share_token) {
-          const res = await fetch(`/api/files/${id}/visibility`, {
+          const res = await Utils.apiFetch(`/api/files/${id}/visibility`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ isPublic: true }),
@@ -248,7 +248,7 @@ const FileManagerModule = {
     let failed = 0;
 
     for (const id of ids) {
-      const res = await fetch(`/api/files/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+      const res = await Utils.apiFetch(`/api/files/${id}`, { method: 'DELETE', credentials: 'same-origin' });
       if (res.ok) {
         deleted++;
         this._files = this._files.filter((f) => f.id !== id);
@@ -452,7 +452,7 @@ const FileManagerModule = {
 
   async _toggleVisibility(id, currentlyPublic) {
     const isPublic = !currentlyPublic;
-    const res = await fetch(`/api/files/${id}/visibility`, {
+    const res = await Utils.apiFetch(`/api/files/${id}/visibility`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isPublic }),
@@ -527,7 +527,7 @@ const FileManagerModule = {
       btn.addEventListener('click', async () => {
         cleanup();
         const expiresIn = btn.dataset.val;
-        const res = await fetch(`/api/files/${id}/expiry`, {
+        const res = await Utils.apiFetch(`/api/files/${id}/expiry`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ expiresIn }),
@@ -548,7 +548,7 @@ const FileManagerModule = {
   },
 
   async _deleteFile(id) {
-    const res = await fetch(`/api/files/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+    const res = await Utils.apiFetch(`/api/files/${id}`, { method: 'DELETE', credentials: 'same-origin' });
     if (res.ok) {
       this._files = this._files.filter((f) => f.id !== id);
       this._selected.delete(id);

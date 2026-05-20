@@ -75,6 +75,7 @@ const UploadManager = {
       const xhr = new XMLHttpRequest();
       xhr.withCredentials = true;
       xhr.open('POST', '/api/upload/simple');
+      xhr.setRequestHeader('x-csrf-token', Utils.getCsrfToken());
 
       this._active[progressId] = { aborted: false, xhr, progressId };
 
@@ -211,6 +212,7 @@ const UploadManager = {
           xhr.withCredentials = true;
           if (expectedSha) xhr.setRequestHeader('x-chunk-sha256', expectedSha);
           xhr.open('PUT', `/api/upload/chunked/${uploadId}/chunk/${index}`);
+          xhr.setRequestHeader('x-csrf-token', Utils.getCsrfToken());
           xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(e.loaded); };
           xhr.onload = () => {
             if (xhr.status >= 200 && xhr.status < 300) { resolve(); return; }
@@ -295,6 +297,12 @@ const UploadManager = {
   },
 
   async _fetchWithRetry(url, opts, retries = this.MAX_RETRIES) {
+    // Inject CSRF token on mutating requests
+    const method = (opts.method || 'GET').toUpperCase();
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      opts.headers = opts.headers || {};
+      opts.headers['x-csrf-token'] = Utils.getCsrfToken();
+    }
     for (let i = 0; i < retries; i++) {
       try {
         const res = await fetch(url, opts);
@@ -317,7 +325,7 @@ const UploadManager = {
       state.xhr.abort();
     } else {
       if (state._lastXhr) state._lastXhr.abort();
-      fetch(`/api/upload/chunked/${serverUploadId}`, { method: 'DELETE', credentials: 'same-origin' })
+      fetch(`/api/upload/chunked/${serverUploadId}`, { method: 'DELETE', credentials: 'same-origin', headers: { 'x-csrf-token': Utils.getCsrfToken() } })
         .catch(() => {});
     }
     delete this._active[serverUploadId];

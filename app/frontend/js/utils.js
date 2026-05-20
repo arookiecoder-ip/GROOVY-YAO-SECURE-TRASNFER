@@ -91,6 +91,33 @@ const Utils = {
     });
   },
 
+  /**
+   * Read the CSRF token from the csrf_token cookie.
+   * The cookie value is "token.signature" — we only need the token part.
+   */
+  getCsrfToken() {
+    const match = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('csrf_token='));
+    if (!match) return '';
+    const val = match.slice('csrf_token='.length);
+    return val.split('.')[0]; // token is before the dot
+  },
+
+  /**
+   * Drop-in replacement for fetch() that automatically injects the
+   * X-CSRF-Token header on state-mutating requests.
+   * Usage: Utils.apiFetch('/api/files/123', { method: 'DELETE', credentials: 'same-origin' })
+   */
+  apiFetch(url, opts = {}) {
+    const method = (opts.method || 'GET').toUpperCase();
+    const mutating = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+    if (mutating) {
+      opts.headers = opts.headers || {};
+      opts.headers['x-csrf-token'] = this.getCsrfToken();
+    }
+    opts.credentials = opts.credentials || 'same-origin';
+    return fetch(url, opts);
+  },
+
   async copyToClipboard(text) {
     if (navigator.clipboard && window.isSecureContext) {
       try {
