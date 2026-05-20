@@ -75,18 +75,6 @@ async function buildApp() {
     xssFilter: true,
   });
 
-  // Fix #9: only trust cf-connecting-ip (Cloudflare) or fall back to req.ip.
-  // Never trust x-forwarded-for directly — it can be spoofed by clients.
-  await fastify.register(require('@fastify/rate-limit'), {
-    global: true,
-    max: 100,
-    timeWindow: '1 minute',
-    keyGenerator: (req) => req.headers['cf-connecting-ip'] || req.ip,
-    onExceeded: (req, key) => {
-      req.log.warn({ event: 'TRAFFIC_ANOMALY', ip: key, url: req.raw.url }, 'Rate limit exceeded');
-    }
-  });
-
   // Cookies
   await fastify.register(require('@fastify/cookie'), {
     secret: config.csrfSecret,
