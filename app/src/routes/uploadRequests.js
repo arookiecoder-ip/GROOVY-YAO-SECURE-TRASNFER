@@ -738,13 +738,13 @@ async function uploadRequestRoutes(fastify) {
     try {
       fs.readdirSync(chunkDir).forEach((f) => fs.unlinkSync(path.join(chunkDir, f)));
       fs.rmdirSync(chunkDir);
-    } catch { /* non-fatal */ }
+    } catch (_e) { /* non-fatal */ }
 
     let filename = upload.original_name;
     try {
       const { decryptFilename } = require('../services/encryption');
       filename = decryptFilename(encName, nameIv, nameTag, fileId);
-    } catch { /* fallback */ }
+    } catch (_e) { /* fallback */ }
 
     broadcast('FILE_ADDED', { fileId });
 

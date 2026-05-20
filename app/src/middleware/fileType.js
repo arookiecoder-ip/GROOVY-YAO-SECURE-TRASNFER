@@ -45,7 +45,7 @@ async function validateFileType(buf, declaredName) {
     if (result && BLOCKED_TYPES.has(result.mime)) {
       return { ok: false, reason: `Blocked file type: ${result.mime}` };
     }
-  } catch { /* file-type failed — allow through, log elsewhere */ }
+  } catch (_e) { /* file-type failed — allow through, log elsewhere */ }
 
   return { ok: true };
 }

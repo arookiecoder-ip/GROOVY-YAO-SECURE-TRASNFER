@@ -12,7 +12,7 @@ function safeDecryptName(row) {
     const tagParts = (row.encryption_tag || '').split(':');
     if (tagParts.length < 2 || !tagParts[1]) return '[encrypted]';
     return decryptFilename(row.original_name, row.original_name_iv, tagParts[1], row.id);
-  } catch {
+  } catch (_e) {
     return '[encrypted]';
   }
 }
@@ -130,7 +130,7 @@ async function bundlesRoutes(fastify) {
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_bundles_token ON bundles(token);
     `);
-  } catch { /* table already exists — ignore */ }
+  } catch (_e) { /* table already exists — ignore */ }
 
   // ── Create bundle (authenticated) ─────────────────────────────────────────
   fastify.post('/bundles', async (req, reply) => {

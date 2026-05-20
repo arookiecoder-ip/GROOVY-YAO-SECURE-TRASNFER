@@ -271,13 +271,13 @@ async function chunksRoutes(fastify) {
       const dir = chunkDir(uploadId);
       fs.readdirSync(dir).forEach((f) => fs.unlinkSync(path.join(dir, f)));
       fs.rmdirSync(dir);
-    } catch { /* non-fatal */ }
+    } catch (_e) { /* non-fatal */ }
 
     // Decrypt original filename for response
     let filename = upload.original_name;
     try {
       filename = decryptFilename(encName, nameIv, nameTag, fileId);
-    } catch { /* fallback */ }
+    } catch (_e) { /* fallback */ }
 
     broadcast('UPLOAD_COMPLETE', {
       uploadId,
@@ -313,7 +313,7 @@ async function chunksRoutes(fastify) {
         fs.readdirSync(dir).forEach((f) => fs.unlinkSync(path.join(dir, f)));
         fs.rmdirSync(dir);
       }
-    } catch { /* non-fatal */ }
+    } catch (_e) { /* non-fatal */ }
 
     return reply.send({ ok: true });
   });

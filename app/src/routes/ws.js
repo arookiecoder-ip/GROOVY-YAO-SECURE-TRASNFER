@@ -31,7 +31,7 @@ async function wsRoutes(fastify) {
       sessionId = await verifyAccessToken(token);
       const session = getSession(sessionId);
       if (!session) throw new Error('Session revoked');
-    } catch {
+    } catch (_e) {
       socket.close(4001, 'Unauthorized');
       return;
     }

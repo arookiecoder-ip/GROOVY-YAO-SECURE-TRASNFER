@@ -36,7 +36,7 @@ async function jwtMiddleware(req, reply) {
       if (!session) return reply.code(401).send({ error: 'Session revoked' });
       req.sessionId = sessionId;
       return;
-    } catch {
+    } catch (_e) {
       // fall through to refresh attempt
     }
   }
@@ -59,7 +59,7 @@ async function jwtMiddleware(req, reply) {
       const sessionId = await verifyAccessToken(accessToken);
       req.sessionId = sessionId;
       return;
-    } catch {
+    } catch (_e) {
       // fall through to 401
     }
   }

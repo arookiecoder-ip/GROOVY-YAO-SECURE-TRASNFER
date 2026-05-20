@@ -19,7 +19,7 @@ function deleteExpiredFiles() {
   if (expired.length > 0) {
     for (const row of expired) {
       const filePath = path.join(config.storagePath, row.storage_id);
-      try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+      try { fs.unlinkSync(filePath); } catch (_e) { /* already gone */ }
     }
 
     const ids = expired.map((r) => r.id);
@@ -46,7 +46,7 @@ function deleteExpiredFiles() {
         fs.readdirSync(chunkDir).forEach((f) => fs.unlinkSync(path.join(chunkDir, f)));
         fs.rmdirSync(chunkDir);
       }
-    } catch { /* non-fatal */ }
+    } catch (_e) { /* non-fatal */ }
   }
 
   if (staleUploads.length > 0) {

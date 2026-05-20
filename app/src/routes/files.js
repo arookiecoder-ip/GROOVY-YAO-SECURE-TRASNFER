@@ -271,55 +271,6 @@ async function filesRoutes(fastify) {
     const qs = req.query.dl === '1' ? '?dl=1' : '';
     return reply.redirect(301, `/s/${req.params.token}${qs}`);
   });
-    const db = getDb();
-    const row = db.prepare('SELECT * FROM files WHERE share_token = ? AND status = ? AND is_public = 1').get(req.params.token, 'complete');
-    const isBrowser = (req.headers['accept'] || '').includes('text/html');
-    const denyHtml = (code, msg) => reply.code(code).type('text/html').send(accessDeniedPage(msg));
-
-    if (!row) return isBrowser ? denyHtml(404, 'This link is invalid or the file has been made private.') : reply.code(404).send({ error: 'Not found' });
-    if (row.expires_at && row.expires_at < Date.now()) {
-      return isBrowser ? denyHtml(410, 'This file has expired.') : reply.code(410).send({ error: 'File expired' });
-    }
-
-    const filePath = storagePath(row.storage_id);
-    if (!fs.existsSync(filePath)) return reply.code(404).send({ error: 'Storage missing' });
-
-    const saltHex = row.encryption_iv.split(':')[0];
-    let filename;
-    try {
-      // Fix #13: validate tag format before splitting
-      const tagParts = row.encryption_tag.split(':');
-      if (tagParts.length < 2 || !tagParts[1]) throw new Error('Malformed tag');
-      filename = decryptFilename(row.original_name, row.original_name_iv, tagParts[1], row.id);
-    } catch { filename = 'download'; }
-
-    if (isBrowser && req.query.dl !== '1') {
-      return reply.type('text/html').send(downloadPage(row, filename));
-    }
-
-    db.prepare('UPDATE files SET download_count = download_count + 1 WHERE id = ?').run(row.id);
-    db.prepare(`INSERT INTO transfer_history (id, event_type, file_id, size_bytes, ip_hash, timestamp) VALUES (?,?,?,?,?,?)`)
-      .run(uuidv4(), 'download', row.id, row.size_bytes, ipHash(req.ip), Date.now());
-
-    const safeFilename = encodeURIComponent(filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');
-    reply.header('Content-Type', row.mime_type || 'application/octet-stream');
-    reply.header('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${safeFilename}`);
-    reply.header('X-Content-Type-Options', 'nosniff');
-
-    const readStream = fs.createReadStream(filePath);
-    const decStream = createDecryptStream(row.id, saltHex);
-    // Fix #8: handle stream errors to prevent unhandled error events crashing the process
-    readStream.on('error', (err) => {
-      req.log.error(err, 'read stream error during public download');
-      decStream.destroy(err);
-    });
-    decStream.on('error', (err) => {
-      req.log.error(err, 'decrypt stream error during public download');
-      if (!reply.sent) reply.raw.destroy();
-    });
-    readStream.pipe(decStream);
-    return reply.send(decStream);
-  });
 
   // ── Preview by file ID (authenticated — inline, no download) ────────────
   fastify.get('/files/:id/preview', async (req, reply) => {
@@ -373,7 +324,7 @@ async function filesRoutes(fastify) {
       const tagParts = row.encryption_tag.split(':');
       if (tagParts.length < 2 || !tagParts[1]) throw new Error('Malformed tag');
       filename = decryptFilename(row.original_name, row.original_name_iv, tagParts[1], row.id);
-    } catch { filename = 'download'; }
+    } catch (_e) { filename = 'download'; }
 
     db.prepare('UPDATE files SET download_count = download_count + 1 WHERE id = ?').run(row.id);
     db.prepare(`INSERT INTO transfer_history (id, event_type, file_id, size_bytes, ip_hash, timestamp) VALUES (?,?,?,?,?,?)`)
@@ -434,7 +385,7 @@ async function filesRoutes(fastify) {
     if (!row) return reply.code(404).send({ error: 'File not found' });
 
     const filePath = storagePath(row.storage_id);
-    try { fs.unlinkSync(filePath); } catch { /* already gone */ }
+    try { fs.unlinkSync(filePath); } catch (_e) { /* already gone */ }
 
     db.prepare('DELETE FROM files WHERE id = ?').run(row.id);
 
@@ -526,7 +477,7 @@ async function filesRoutes(fastify) {
         const tagParts = row.encryption_tag.split(':');
         if (tagParts.length < 2 || !tagParts[1]) throw new Error('Malformed tag');
         filename = decryptFilename(row.original_name, row.original_name_iv, tagParts[1], row.id);
-      } catch { filename = row.id; }
+      } catch (_e) { filename = row.id; }
 
       const filePath = storagePath(row.storage_id);
       if (!fs.existsSync(filePath)) continue;
@@ -583,7 +534,7 @@ async function filesRoutes(fastify) {
       const total = stat.blocks * stat.bsize;
       const free = stat.bfree * stat.bsize;
       disk = { total, free, used: total - free };
-    } catch { /* statfs unavailable on this platform */ }
+    } catch (_e) { /* statfs unavailable on this platform */ }
 
     return reply.send({
       files: { count: files.count, total_bytes: files.total_bytes || 0 },
@@ -629,7 +580,7 @@ async function filesShortRoute(fastify) {
       const tagParts = row.encryption_tag.split(':');
       if (tagParts.length < 2 || !tagParts[1]) throw new Error('Malformed tag');
       filename = _decryptFilename(row.original_name, row.original_name_iv, tagParts[1], row.id);
-    } catch { filename = 'download'; }
+    } catch (_e) { filename = 'download'; }
 
     // Show landing page in browser unless ?dl=1
     if (isBrowser && req.query.dl !== '1') {

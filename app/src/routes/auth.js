@@ -72,7 +72,7 @@ function cookieOpts(maxAgeMs) {
 }
 
 function rpID() {
-  try { return new URL(config.domain).hostname; } catch { return 'localhost'; }
+  try { return new URL(config.domain).hostname; } catch (_e) { return 'localhost'; }
 }
 
 function origin() { return config.domain; }
@@ -113,7 +113,7 @@ async function authRoutes(fastify) {
         const sessionId = await verifyAccessToken(token);
         const session = getSession(sessionId);
         if (session) return reply.send({ ok: true, authMethod: session.auth_method });
-      } catch { /* fall through */ }
+      } catch (_e) { /* fall through */ }
       // Try refresh rotation
       const refresh = req.cookies[REFRESH_COOKIE];
       if (refresh) {
@@ -121,7 +121,7 @@ async function authRoutes(fastify) {
           const { accessToken, refreshToken } = await rotateRefreshToken(refresh, req.ip);
           setTokenCookies(reply, accessToken, refreshToken);
           return reply.send({ ok: true });
-        } catch { /* fall through */ }
+        } catch (_e) { /* fall through */ }
       }
     }
     // Try device token auto-login

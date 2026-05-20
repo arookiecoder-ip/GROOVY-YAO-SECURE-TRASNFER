@@ -43,7 +43,7 @@ function verifyCsrfToken(token, sig) {
   // Constant-time comparison to prevent timing attacks
   try {
     return crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'));
-  } catch {
+  } catch (_e) {
     return false;
   }
 }
