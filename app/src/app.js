@@ -186,6 +186,16 @@ async function buildApp() {
     const { bundlesShortRoute } = require('./routes/bundles');
     if (filesShortRoute) await filesShortRoute(f);
     if (bundlesShortRoute) await bundlesShortRoute(f);
+
+    // Wildcard catch-all under /s/:token/* — strip extra path and redirect to canonical
+    f.get('/s/:token/*', { config: { public: true } }, async (req, reply) => {
+      return reply.redirect(301, `/s/${req.params.token}`);
+    });
+
+    // Wildcard catch-all under /b/:token/* — strip extra path and redirect to canonical
+    f.get('/b/:token/*', { config: { public: true } }, async (req, reply) => {
+      return reply.redirect(301, `/b/${req.params.token}`);
+    });
   });
 
   // WebSocket route
@@ -198,21 +208,91 @@ async function buildApp() {
 
   // Global Error Handler to squelch internal leaks
   fastify.setErrorHandler((error, request, reply) => {
-    // If it's a Fastify-internal validation or rate limit error, keep it standard
     if (error.statusCode && error.statusCode < 500) {
-      return reply.code(error.statusCode).send({
-        error: error.message || 'Client Error'
-      });
+      const isBrowser = (request.headers['accept'] || '').includes('text/html');
+      if (isBrowser) {
+        return reply.code(error.statusCode).type('text/html').send(
+          _errorPage(error.statusCode, error.statusCode === 404 ? 'Page Not Found' : 'Client Error',
+            error.statusCode === 404
+              ? `The page <code>${_esc(request.url)}</code> does not exist.`
+              : error.message || 'Something went wrong.')
+        );
+      }
+      return reply.code(error.statusCode).send({ error: error.message || 'Client Error' });
     }
-
-    // Log full error, stack trace, and potentially DB constraints server-side ONLY
     request.log.error(error);
-
-    // Send generic client message
+    const isBrowser = (request.headers['accept'] || '').includes('text/html');
+    if (isBrowser) {
+      return reply.code(500).type('text/html').send(
+        _errorPage(500, 'Internal Server Error', 'Something went wrong on our end. Please try again.')
+      );
+    }
     reply.code(500).send({ error: 'Internal Server Error' });
   });
 
+  // Global 404 handler — catches all unmatched routes
+  fastify.setNotFoundHandler((request, reply) => {
+    const isBrowser = (request.headers['accept'] || '').includes('text/html');
+
+    // Smart redirect: if URL looks like /s/<token>/anything or /b/<token>/anything,
+    // strip the extra path and redirect to the canonical short URL
+    const shareMatch = request.url.match(/^\/s\/([^/?#]+)/);
+    const bundleMatch = request.url.match(/^\/b\/([^/?#]+)/);
+    if (shareMatch) return reply.redirect(301, `/s/${shareMatch[1]}`);
+    if (bundleMatch) return reply.redirect(301, `/b/${bundleMatch[1]}`);
+
+    if (isBrowser) {
+      return reply.code(404).type('text/html').send(
+        _errorPage(404, 'Page Not Found',
+          `The page <code>${_esc(request.url)}</code> does not exist.`)
+      );
+    }
+    reply.code(404).send({ error: 'Not Found', url: request.url });
+  });
+
   return fastify;
+}
+
+function _esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function _errorPage(code, title, message) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>GROOVY YAO // ${_esc(title)}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#050a0e;color:#00f5ff;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+    .card{border:1px solid #00f5ff33;padding:48px 40px;max-width:480px;width:100%;text-align:center}
+    .code{font-size:4rem;font-weight:700;color:#00f5ff22;letter-spacing:.1em;margin-bottom:8px}
+    .title{font-size:1rem;font-weight:700;letter-spacing:.15em;color:#ff4444;margin-bottom:24px}
+    .msg{font-size:.85rem;color:#aaa;line-height:1.7;margin-bottom:32px}
+    code{background:#0a1520;padding:2px 8px;border:1px solid #00f5ff22;font-size:.8rem;color:#00f5ff;word-break:break-all}
+    .btn{display:inline-block;padding:10px 28px;border:1px solid #00f5ff;color:#00f5ff;text-decoration:none;font-family:inherit;font-size:.8rem;letter-spacing:.1em;transition:background .15s,color .15s}
+    .btn:hover{background:#00f5ff;color:#000}
+    .brand{font-size:.68rem;letter-spacing:.2em;color:#00f5ff44;margin-bottom:32px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">GROOVY YAO // SECURE FILE TRANSFER</div>
+    <div class="code">${code}</div>
+    <div class="title">// ${_esc(title).toUpperCase()}</div>
+    <div class="msg">${message}</div>
+    <a href="/" class="btn">RETURN TO BASE</a>
+  </div>
+</body>
+</html>`;
 }
 
 module.exports = { buildApp };
