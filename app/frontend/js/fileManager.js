@@ -723,14 +723,20 @@ const FileManagerModule = {
       if (!ds.active) return;
 
       const vh = window.innerHeight;
+      // Account for the bulk-action bar (fixed at bottom) so the scroll zone
+      // starts above it, not behind it.
+      const bulkBar = document.getElementById('bulk-action-bar');
+      const bulkBarH = (bulkBar && !bulkBar.classList.contains('hidden'))
+        ? bulkBar.offsetHeight : 0;
+      const bottomEdge = vh - bulkBarH;
       let delta = 0;
 
       if (_curY < SCROLL_ZONE) {
         // Near top — scroll up, faster the closer to the edge
         delta = -SCROLL_SPEED * (1 - _curY / SCROLL_ZONE);
-      } else if (_curY > vh - SCROLL_ZONE) {
-        // Near bottom — scroll down
-        delta = SCROLL_SPEED * (1 - (vh - _curY) / SCROLL_ZONE);
+      } else if (_curY > bottomEdge - SCROLL_ZONE) {
+        // Near bottom — scroll down (above the bulk bar)
+        delta = SCROLL_SPEED * (1 - (bottomEdge - _curY) / SCROLL_ZONE);
       }
 
       if (delta !== 0) {
