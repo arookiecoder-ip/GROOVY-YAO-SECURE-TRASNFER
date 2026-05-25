@@ -460,12 +460,76 @@
   line-height: 1;
 }
 
+/* Hide the native checkbox entirely — replaced by custom ::before pseudo */
 .fm-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
   width: 15px;
   height: 15px;
-  accent-color: var(--color-cyan);
+  min-width: 15px;
+  border: 1.5px solid var(--color-border2);
+  border-radius: 3px;
+  background: transparent;
   cursor: pointer;
   flex-shrink: 0;
+  position: relative;
+  transition: border-color 0.15s, background 0.15s;
+  vertical-align: middle;
+}
+
+/* Hover state */
+.fm-checkbox:hover {
+  border-color: var(--color-cyan);
+}
+
+/* Checked state — filled cyan with a tick */
+.fm-checkbox:checked {
+  background: var(--color-cyan);
+  border-color: var(--color-cyan);
+}
+
+/* The tick mark */
+.fm-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0px;
+  width: 5px;
+  height: 9px;
+  border: 2px solid #000;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg);
+}
+
+/* Indeterminate state (select-all partial) */
+.fm-checkbox:indeterminate {
+  border-color: var(--color-cyan);
+  background: rgba(0, 245, 255, 0.15);
+}
+.fm-checkbox:indeterminate::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 5px;
+  width: 7px;
+  height: 2px;
+  background: var(--color-cyan);
+  border: none;
+  transform: none;
+}
+
+/* Light theme adjustments */
+[data-theme="light"] .fm-checkbox {
+  border-color: var(--color-border2);
+  background: transparent;
+}
+[data-theme="light"] .fm-checkbox:checked {
+  background: var(--color-cyan);
+  border-color: var(--color-cyan);
+}
+[data-theme="light"] .fm-checkbox:checked::after {
+  border-color: #fff;
 }
 
 /* Checkbox in grid card — top-right corner */
@@ -916,6 +980,12 @@
 /* Prevent text selection while dragging */
 .file-list tbody tr,
 .file-card {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Disable text selection across the entire file manager */
+#view-files {
   -webkit-user-select: none;
   user-select: none;
 }

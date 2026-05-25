@@ -495,6 +495,35 @@ const FileManagerModule = {
     if (viewContainer) this._bindDragSelect(viewContainer, sig);
 
     root.addEventListener('click', async (e) => {
+      // ── Row/card click → toggle selection ─────────────────────────────
+      // Clicking anywhere on a row or card (but NOT on an action button,
+      // checkbox label, or interactive element) toggles that file's selection.
+      if (!e.target.closest('[data-action], .fm-check-label, .fm-checkbox, button, a, input, select')) {
+        const row  = e.target.closest('tbody tr');
+        const card = e.target.closest('.file-card');
+        const el   = row || card;
+        if (el) {
+          const cb = el.querySelector('.fm-checkbox[data-id]');
+          if (cb) {
+            const id = cb.dataset.id;
+            this._toggleSelect(id);
+            const selected = this._selected.has(id);
+            cb.checked = selected;
+            if (row)  row.classList.toggle('file-row-selected', selected);
+            if (card) card.classList.toggle('file-card-selected', selected);
+            // Update select-all checkbox state
+            const allCb = root.querySelector('.fm-checkbox-all');
+            if (allCb) {
+              const pageIds = [...root.querySelectorAll('.fm-checkbox[data-id]')].map(c => c.dataset.id);
+              allCb.checked = pageIds.length > 0 && pageIds.every(pid => this._selected.has(pid));
+              allCb.indeterminate = pageIds.some(pid => this._selected.has(pid)) && !allCb.checked;
+            }
+          }
+          return;
+        }
+      }
+
+      // ── Action button clicks ───────────────────────────────────────────
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       const { action, id } = btn.dataset;
@@ -603,24 +632,22 @@ const FileManagerModule = {
 
     const updateSelection = (x1, y1, x2, y2, additive) => {
       const lassoRect = makeRect(x1, y1, x2, y2);
-
-      // Start from the pre-drag selection if additive (Shift/Ctrl held)
       const base = additive ? new Set(ds.preSelected) : new Set();
 
-      getAllSelectables().forEach((el) => {
+      // Read all bounding rects in one pass (batch layout reads before writes)
+      const selectables = getAllSelectables();
+      const rects = selectables.map((el) => el.getBoundingClientRect());
+
+      selectables.forEach((el, i) => {
         const id = getIdFromEl(el);
         if (!id) return;
-        const br = el.getBoundingClientRect();
-        if (rectsIntersect(lassoRect, br)) {
-          base.add(id);
-        }
+        if (rectsIntersect(lassoRect, rects[i])) base.add(id);
       });
 
-      // Apply the new selection set
       this._selected = base;
 
-      // Sync visual state for every selectable element
-      getAllSelectables().forEach((el) => {
+      // Batch DOM writes after all reads
+      selectables.forEach((el) => {
         const id = getIdFromEl(el);
         if (!id) return;
         const selected = this._selected.has(id);
@@ -665,8 +692,52 @@ const FileManagerModule = {
       if (!ds.active) return;
       ds.active = false;
       removeLasso();
+      stopAutoScroll();
       document.body.style.userSelect       = '';
       document.body.style.webkitUserSelect = '';
+    };
+
+    // ── Auto-scroll when cursor is near viewport edges ─────────────────────
+    // Mirrors Google Drive behaviour: drag to bottom/top edge scrolls the page.
+
+    let _scrollRaf = null;
+    let _curX = 0;
+    let _curY = 0;
+    const SCROLL_ZONE  = 80;  // px from edge that triggers scroll
+    const SCROLL_SPEED = 12;  // max px per frame
+
+    const autoScrollTick = () => {
+      if (!ds.active) return;
+
+      const vh = window.innerHeight;
+      let delta = 0;
+
+      if (_curY < SCROLL_ZONE) {
+        // Near top — scroll up, faster the closer to the edge
+        delta = -SCROLL_SPEED * (1 - _curY / SCROLL_ZONE);
+      } else if (_curY > vh - SCROLL_ZONE) {
+        // Near bottom — scroll down
+        delta = SCROLL_SPEED * (1 - (vh - _curY) / SCROLL_ZONE);
+      }
+
+      if (delta !== 0) {
+        window.scrollBy(0, delta);
+        // After scrolling, re-evaluate selection with updated bounding rects
+        updateSelection(ds.startX, ds.startY, _curX, _curY,
+          ds._lastAdditive || false);
+        updateLasso(ds.startX, ds.startY, _curX, _curY);
+      }
+
+      _scrollRaf = requestAnimationFrame(autoScrollTick);
+    };
+
+    const startAutoScroll = () => {
+      if (_scrollRaf) return;
+      _scrollRaf = requestAnimationFrame(autoScrollTick);
+    };
+
+    const stopAutoScroll = () => {
+      if (_scrollRaf) { cancelAnimationFrame(_scrollRaf); _scrollRaf = null; }
     };
 
     // ── Mouse events ───────────────────────────────────────────────────────
@@ -683,11 +754,27 @@ const FileManagerModule = {
     }, sig);
 
     // mousemove on document so lasso works even if cursor leaves the container
+    let _rafPending = false;
     const onMouseMove = (e) => {
       if (!ds.active) return;
-      updateLasso(ds.startX, ds.startY, e.clientX, e.clientY);
-      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-      updateSelection(ds.startX, ds.startY, e.clientX, e.clientY, additive);
+      _curX = e.clientX;
+      _curY = e.clientY;
+      ds._lastAdditive = e.shiftKey || e.ctrlKey || e.metaKey;
+
+      // Update lasso visually on every event (cheap — just CSS)
+      updateLasso(ds.startX, ds.startY, _curX, _curY);
+
+      // Throttle the expensive selection recalc to once per animation frame
+      if (!_rafPending) {
+        _rafPending = true;
+        requestAnimationFrame(() => {
+          _rafPending = false;
+          if (!ds.active) return;
+          updateSelection(ds.startX, ds.startY, _curX, _curY, ds._lastAdditive);
+        });
+      }
+
+      startAutoScroll();
     };
 
     const onMouseUp = () => { endDrag(); };
@@ -699,6 +786,7 @@ const FileManagerModule = {
     sig.signal.addEventListener('abort', () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      stopAutoScroll();
       endDrag();
     });
 
