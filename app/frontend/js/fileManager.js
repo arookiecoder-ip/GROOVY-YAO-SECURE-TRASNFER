@@ -14,6 +14,14 @@ const FileManagerModule = {
   _selected: new Set(),
   _bulkBar: null,
 
+  // Drag-to-select state
+  _dragSelect: {
+    active: false,
+    startId: null,
+    lastIds: [],
+    adding: true,   // true = selecting, false = deselecting
+  },
+
   init() {
     this._render();
     this.refresh();
@@ -160,7 +168,8 @@ const FileManagerModule = {
 
   /**
    * Download selected files one by one automatically.
-   * Uses a hidden <a> with a small delay between each to avoid browser blocking.
+   * Uses fetch + Blob + revokeObjectURL so it works on mobile browsers
+   * that block programmatic anchor clicks for cross-origin/navigation URLs.
    */
   async _bulkDownload() {
     const ids = [...this._selected];
@@ -170,25 +179,40 @@ const FileManagerModule = {
 
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
-      const f = this._files.find((f) => f.id === id);
+      const f = this._files.find((file) => file.id === id);
       const name = f ? f.name : id;
 
-      // Create a temporary anchor and click it — browser handles the download
-      const a = document.createElement('a');
-      a.href = `/api/files/${id}/download`;
-      a.download = name;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      try {
+        // Fetch the file as a blob — works on mobile without popup-blocker issues
+        const res = await fetch(`/api/files/${id}/download`, { credentials: 'same-origin' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
 
-      // Wait between downloads so the browser doesn't block them as a popup storm
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = name;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        // Revoke after a short delay to let the browser start the download
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      } catch (err) {
+        Notifications.error(`Failed to download ${name}`, err.message);
+      }
+
+      // Small gap between files to avoid overwhelming the browser
       if (i < ids.length - 1) {
-        await new Promise((r) => setTimeout(r, 800));
+        await new Promise((r) => setTimeout(r, 600));
       }
     }
 
-    Notifications.success('DOWNLOADS STARTED', `${ids.length} file${ids.length !== 1 ? 's' : ''} queued`);
+    Notifications.success('DOWNLOADS COMPLETE', `${ids.length} file${ids.length !== 1 ? 's' : ''} downloaded`);
+
+    // Auto-deselect all files after download
+    this._clearSelection();
   },
 
   /**
@@ -472,6 +496,9 @@ const FileManagerModule = {
       if (btn) e.preventDefault();
     }, sig);
 
+    // ── Drag-to-select (mouse + touch) ────────────────────────────────────
+    this._bindDragSelect(root, sig);
+
     root.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
@@ -499,6 +526,136 @@ const FileManagerModule = {
         if (!await Utils.confirm('Delete this file?', 'Delete')) return;
         await this._deleteFile(id);
       }
+    }, sig);
+  },
+
+  // ── Drag-to-select implementation ─────────────────────────────────────────
+
+  /**
+   * Enables drag-to-select on list rows and grid cards.
+   * - Mouse: hold and drag over rows/cards to select them.
+   * - Touch: long-press (300ms) then drag to select on mobile.
+   * Dragging over already-selected items deselects them (toggle mode).
+   */
+  _bindDragSelect(root, sig) {
+    const ds = this._dragSelect;
+    let touchTimer = null;
+    let touchActive = false;
+
+    const getItemId = (el) => {
+      const row = el.closest('tr[class], tr');
+      if (row) {
+        const cb = row.querySelector('.fm-checkbox[data-id]');
+        return cb ? cb.dataset.id : null;
+      }
+      const card = el.closest('.file-card');
+      if (card) {
+        const cb = card.querySelector('.fm-checkbox[data-id]');
+        return cb ? cb.dataset.id : null;
+      }
+      return null;
+    };
+
+    const applyId = (id) => {
+      if (!id || ds.lastIds.includes(id)) return;
+      ds.lastIds.push(id);
+      if (ds.adding) {
+        this._selected.add(id);
+      } else {
+        this._selected.delete(id);
+      }
+      // Update visual state
+      const cb = root.querySelector(`.fm-checkbox[data-id="${id}"]`);
+      if (cb) {
+        cb.checked = ds.adding;
+        const row = cb.closest('tr');
+        const card = cb.closest('.file-card');
+        if (row) row.classList.toggle('file-row-selected', ds.adding);
+        if (card) card.classList.toggle('file-card-selected', ds.adding);
+      }
+      this._updateBulkBar();
+    };
+
+    const startDrag = (id) => {
+      if (!id) return;
+      ds.active = true;
+      ds.startId = id;
+      ds.lastIds = [];
+      // If item is already selected, this drag will deselect; otherwise select
+      ds.adding = !this._selected.has(id);
+      applyId(id);
+      document.body.style.userSelect = 'none';
+      document.body.style.webkitUserSelect = 'none';
+    };
+
+    const endDrag = () => {
+      if (!ds.active) return;
+      ds.active = false;
+      ds.startId = null;
+      ds.lastIds = [];
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
+    };
+
+    // ── Mouse events ──────────────────────────────────────────────────────
+    root.addEventListener('mousedown', (e) => {
+      // Only start drag on row/card background, not on buttons or checkboxes
+      if (e.target.closest('[data-action], .fm-checkbox, .fm-check-label, button, a, input')) return;
+      if (e.button !== 0) return;
+      const id = getItemId(e.target);
+      if (id) startDrag(id);
+    }, sig);
+
+    root.addEventListener('mousemove', (e) => {
+      if (!ds.active) return;
+      const id = getItemId(e.target);
+      if (id) applyId(id);
+    }, sig);
+
+    root.addEventListener('mouseup', () => endDrag(), sig);
+    root.addEventListener('mouseleave', () => endDrag(), sig);
+
+    // ── Touch events (long-press to activate, then drag) ──────────────────
+    root.addEventListener('touchstart', (e) => {
+      if (e.target.closest('[data-action], .fm-checkbox, .fm-check-label, button, a, input')) return;
+      const touch = e.touches[0];
+      const id = getItemId(document.elementFromPoint(touch.clientX, touch.clientY));
+      if (!id) return;
+
+      touchTimer = setTimeout(() => {
+        touchActive = true;
+        startDrag(id);
+        // Haptic feedback if available
+        if (navigator.vibrate) navigator.vibrate(30);
+      }, 300);
+    }, sig);
+
+    root.addEventListener('touchmove', (e) => {
+      if (!touchActive) {
+        clearTimeout(touchTimer);
+        return;
+      }
+      e.preventDefault(); // prevent scroll while drag-selecting
+      const touch = e.touches[0];
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (el) {
+        const id = getItemId(el);
+        if (id) applyId(id);
+      }
+    }, { signal: sig.signal, passive: false });
+
+    root.addEventListener('touchend', () => {
+      clearTimeout(touchTimer);
+      if (touchActive) {
+        touchActive = false;
+        endDrag();
+      }
+    }, sig);
+
+    root.addEventListener('touchcancel', () => {
+      clearTimeout(touchTimer);
+      touchActive = false;
+      endDrag();
     }, sig);
   },
 

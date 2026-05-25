@@ -925,3 +925,18 @@
   .perpage-group { display: none; }
   .fm-page-btn { padding: 4px 7px; font-size: 0.65rem; min-width: 30px; }
 }
+
+/* ── Drag-to-select ── */
+/* Show a crosshair cursor when hovering over selectable rows/cards
+   to hint that drag-selection is available */
+.file-list tbody tr:not(:has([data-action])):hover,
+.file-card:hover {
+  cursor: crosshair;
+}
+
+/* Prevent text selection highlight during drag */
+.file-list tbody tr,
+.file-card {
+  -webkit-user-select: none;
+  user-select: none;
+}
