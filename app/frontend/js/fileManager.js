@@ -635,6 +635,12 @@ const FileManagerModule = {
 
     const updateSelection = (x1, y1, x2, y2, additive) => {
       const lassoRect = makeRect(x1, y1, x2, y2);
+
+      // Ignore tiny lassos (< 8×8 px) — these are accidental micro-drags, not
+      // intentional selections. Without this guard a stray mouse movement while
+      // clicking empty space would replace the whole selection.
+      if (!additive && lassoRect.width < 8 && lassoRect.height < 8) return;
+
       const base = additive ? new Set(ds.preSelected) : new Set();
 
       // Read all bounding rects in one pass (batch layout reads before writes)
@@ -684,7 +690,7 @@ const FileManagerModule = {
     };
 
     // Called once the mouse moves beyond DRAG_THRESHOLD — commits the drag
-    const DRAG_THRESHOLD = 5; // px
+    const DRAG_THRESHOLD = 12; // px — large enough to distinguish click from drag
     const commitDrag = (additive) => {
       if (ds._dragging) return;
       ds._dragging = true;
