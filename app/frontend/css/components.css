@@ -926,17 +926,28 @@
   .fm-page-btn { padding: 4px 7px; font-size: 0.65rem; min-width: 30px; }
 }
 
-/* ── Drag-to-select ── */
-/* Show a crosshair cursor when hovering over selectable rows/cards
-   to hint that drag-selection is available */
-.file-list tbody tr:not(:has([data-action])):hover,
-.file-card:hover {
-  cursor: crosshair;
+/* ── Rubber-band drag-to-select (Google Drive style) ── */
+
+/* The lasso rectangle drawn while dragging */
+.drag-lasso {
+  position: fixed;
+  z-index: 9998;
+  pointer-events: none;
+  background: rgba(0, 245, 255, 0.08);
+  border: 1.5px solid rgba(0, 245, 255, 0.6);
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(0, 245, 255, 0.15);
 }
 
-/* Prevent text selection highlight during drag */
+/* Prevent text selection while dragging */
 .file-list tbody tr,
 .file-card {
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* Default cursor on rows/cards — pointer shows they're interactive */
+.file-list tbody tr,
+.file-card {
+  cursor: default;
 }

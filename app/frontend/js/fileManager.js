@@ -14,12 +14,14 @@ const FileManagerModule = {
   _selected: new Set(),
   _bulkBar: null,
 
-  // Drag-to-select state
+  // Drag-to-select state (rubber-band / lasso style like Google Drive)
   _dragSelect: {
     active: false,
-    startId: null,
-    lastIds: [],
-    adding: true,   // true = selecting, false = deselecting
+    startX: 0,
+    startY: 0,
+    rect: null,           // the visual lasso <div>
+    preSelected: null,    // Set of ids selected BEFORE drag started
+    container: null,      // the files-content element
   },
 
   init() {
@@ -529,127 +531,222 @@ const FileManagerModule = {
     }, sig);
   },
 
-  // ── Drag-to-select implementation ─────────────────────────────────────────
+  // ── Rubber-band drag-to-select (Google Drive style) ──────────────────────
 
   /**
-   * Enables drag-to-select on list rows and grid cards.
-   * - Mouse: hold and drag over rows/cards to select them.
-   * - Touch: long-press (300ms) then drag to select on mobile.
-   * Dragging over already-selected items deselects them (toggle mode).
+   * Google Drive-style rubber-band selection:
+   * - Click and drag on empty space → draws a translucent selection rectangle.
+   * - Any file row/card whose bounding box intersects the rectangle gets selected.
+   * - Holding Shift/Ctrl while dragging ADDS to the existing selection.
+   * - Releasing the mouse finalises the selection.
+   * - Touch: long-press (350ms) activates, then drag draws the lasso.
    */
   _bindDragSelect(root, sig) {
     const ds = this._dragSelect;
-    let touchTimer = null;
-    let touchActive = false;
+    ds.container = root;
 
-    const getItemId = (el) => {
-      const row = el.closest('tr[class], tr');
-      if (row) {
-        const cb = row.querySelector('.fm-checkbox[data-id]');
-        return cb ? cb.dataset.id : null;
-      }
+    // ── Helpers ────────────────────────────────────────────────────────────
+
+    /** Return the file-id for a selectable item element (tr or .file-card) */
+    const getSelectableEl = (el) => {
+      // List view — <tr> rows in tbody
+      const row = el.closest('tbody tr');
+      if (row) return row;
+      // Grid view — .file-card
       const card = el.closest('.file-card');
-      if (card) {
-        const cb = card.querySelector('.fm-checkbox[data-id]');
-        return cb ? cb.dataset.id : null;
-      }
+      if (card) return card;
       return null;
     };
 
-    const applyId = (id) => {
-      if (!id || ds.lastIds.includes(id)) return;
-      ds.lastIds.push(id);
-      if (ds.adding) {
-        this._selected.add(id);
-      } else {
-        this._selected.delete(id);
-      }
-      // Update visual state
-      const cb = root.querySelector(`.fm-checkbox[data-id="${id}"]`);
-      if (cb) {
-        cb.checked = ds.adding;
-        const row = cb.closest('tr');
-        const card = cb.closest('.file-card');
-        if (row) row.classList.toggle('file-row-selected', ds.adding);
-        if (card) card.classList.toggle('file-card-selected', ds.adding);
-      }
+    const getIdFromEl = (el) => {
+      const cb = el.querySelector('.fm-checkbox[data-id]');
+      return cb ? cb.dataset.id : null;
+    };
+
+    /** Collect all selectable elements currently rendered */
+    const getAllSelectables = () => [
+      ...root.querySelectorAll('tbody tr, .file-card'),
+    ];
+
+    /** Given two viewport points, return a normalised DOMRect */
+    const makeRect = (x1, y1, x2, y2) => ({
+      left:   Math.min(x1, x2),
+      top:    Math.min(y1, y2),
+      right:  Math.max(x1, x2),
+      bottom: Math.max(y1, y2),
+      width:  Math.abs(x2 - x1),
+      height: Math.abs(y2 - y1),
+    });
+
+    /** Do two rects intersect? */
+    const rectsIntersect = (a, b) =>
+      a.left < b.right && a.right > b.left &&
+      a.top  < b.bottom && a.bottom > b.top;
+
+    // ── Lasso rectangle element ────────────────────────────────────────────
+
+    const ensureLasso = () => {
+      if (ds.rect) return ds.rect;
+      const el = document.createElement('div');
+      el.className = 'drag-lasso';
+      document.body.appendChild(el);
+      ds.rect = el;
+      return el;
+    };
+
+    const removeLasso = () => {
+      if (ds.rect) { ds.rect.remove(); ds.rect = null; }
+    };
+
+    const updateLasso = (x1, y1, x2, y2) => {
+      const lasso = ensureLasso();
+      const r = makeRect(x1, y1, x2, y2);
+      lasso.style.left   = `${r.left}px`;
+      lasso.style.top    = `${r.top}px`;
+      lasso.style.width  = `${r.width}px`;
+      lasso.style.height = `${r.height}px`;
+    };
+
+    // ── Selection update during drag ───────────────────────────────────────
+
+    const updateSelection = (x1, y1, x2, y2, additive) => {
+      const lassoRect = makeRect(x1, y1, x2, y2);
+
+      // Start from the pre-drag selection if additive (Shift/Ctrl held)
+      const base = additive ? new Set(ds.preSelected) : new Set();
+
+      getAllSelectables().forEach((el) => {
+        const id = getIdFromEl(el);
+        if (!id) return;
+        const br = el.getBoundingClientRect();
+        if (rectsIntersect(lassoRect, br)) {
+          base.add(id);
+        }
+      });
+
+      // Apply the new selection set
+      this._selected = base;
+
+      // Sync visual state for every selectable element
+      getAllSelectables().forEach((el) => {
+        const id = getIdFromEl(el);
+        if (!id) return;
+        const selected = this._selected.has(id);
+        const cb = el.querySelector('.fm-checkbox[data-id]');
+        if (cb) cb.checked = selected;
+        if (el.tagName === 'TR') {
+          el.classList.toggle('file-row-selected', selected);
+        } else {
+          el.classList.toggle('file-card-selected', selected);
+        }
+      });
+
       this._updateBulkBar();
     };
 
-    const startDrag = (id) => {
-      if (!id) return;
-      ds.active = true;
-      ds.startId = id;
-      ds.lastIds = [];
-      // If item is already selected, this drag will deselect; otherwise select
-      ds.adding = !this._selected.has(id);
-      applyId(id);
-      document.body.style.userSelect = 'none';
+    // ── Start drag ─────────────────────────────────────────────────────────
+
+    const startDrag = (clientX, clientY, additive) => {
+      ds.active    = true;
+      ds.startX    = clientX;
+      ds.startY    = clientY;
+      ds.preSelected = new Set(this._selected);
+      document.body.style.userSelect       = 'none';
       document.body.style.webkitUserSelect = 'none';
+      updateLasso(clientX, clientY, clientX, clientY);
+      if (!additive) {
+        // Clear selection immediately when starting a fresh drag
+        this._selected.clear();
+        getAllSelectables().forEach((el) => {
+          const cb = el.querySelector('.fm-checkbox[data-id]');
+          if (cb) cb.checked = false;
+          if (el.tagName === 'TR') el.classList.remove('file-row-selected');
+          else el.classList.remove('file-card-selected');
+        });
+        this._updateBulkBar();
+      }
     };
+
+    // ── End drag ───────────────────────────────────────────────────────────
 
     const endDrag = () => {
       if (!ds.active) return;
       ds.active = false;
-      ds.startId = null;
-      ds.lastIds = [];
-      document.body.style.userSelect = '';
+      removeLasso();
+      document.body.style.userSelect       = '';
       document.body.style.webkitUserSelect = '';
     };
 
-    // ── Mouse events ──────────────────────────────────────────────────────
+    // ── Mouse events ───────────────────────────────────────────────────────
+
+    // mousedown on the container background (not on interactive elements)
     root.addEventListener('mousedown', (e) => {
-      // Only start drag on row/card background, not on buttons or checkboxes
-      if (e.target.closest('[data-action], .fm-checkbox, .fm-check-label, button, a, input')) return;
       if (e.button !== 0) return;
-      const id = getItemId(e.target);
-      if (id) startDrag(id);
+      // Don't start lasso if clicking on an interactive element
+      if (e.target.closest('[data-action], .fm-checkbox, .fm-check-label, button, a, input, select')) return;
+      // Must be on a row/card or the container background
+      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+      startDrag(e.clientX, e.clientY, additive);
+      e.preventDefault(); // prevent text selection
     }, sig);
 
-    root.addEventListener('mousemove', (e) => {
+    // mousemove on document so lasso works even if cursor leaves the container
+    const onMouseMove = (e) => {
       if (!ds.active) return;
-      const id = getItemId(e.target);
-      if (id) applyId(id);
-    }, sig);
+      updateLasso(ds.startX, ds.startY, e.clientX, e.clientY);
+      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+      updateSelection(ds.startX, ds.startY, e.clientX, e.clientY, additive);
+    };
 
-    root.addEventListener('mouseup', () => endDrag(), sig);
-    root.addEventListener('mouseleave', () => endDrag(), sig);
+    const onMouseUp = () => { endDrag(); };
 
-    // ── Touch events (long-press to activate, then drag) ──────────────────
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+
+    // Clean up document-level listeners when the AbortController fires
+    sig.signal.addEventListener('abort', () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      endDrag();
+    });
+
+    // ── Touch events (long-press 350ms → lasso) ────────────────────────────
+
+    let touchTimer = null;
+    let touchActive = false;
+    let touchStartX = 0;
+    let touchStartY = 0;
+
     root.addEventListener('touchstart', (e) => {
       if (e.target.closest('[data-action], .fm-checkbox, .fm-check-label, button, a, input')) return;
-      const touch = e.touches[0];
-      const id = getItemId(document.elementFromPoint(touch.clientX, touch.clientY));
-      if (!id) return;
+      const t = e.touches[0];
+      touchStartX = t.clientX;
+      touchStartY = t.clientY;
 
       touchTimer = setTimeout(() => {
         touchActive = true;
-        startDrag(id);
-        // Haptic feedback if available
         if (navigator.vibrate) navigator.vibrate(30);
-      }, 300);
+        startDrag(touchStartX, touchStartY, false);
+      }, 350);
     }, sig);
 
     root.addEventListener('touchmove', (e) => {
+      const t = e.touches[0];
+      // Cancel long-press if finger moved significantly before timer fires
       if (!touchActive) {
-        clearTimeout(touchTimer);
+        const dx = t.clientX - touchStartX;
+        const dy = t.clientY - touchStartY;
+        if (Math.sqrt(dx * dx + dy * dy) > 8) clearTimeout(touchTimer);
         return;
       }
-      e.preventDefault(); // prevent scroll while drag-selecting
-      const touch = e.touches[0];
-      const el = document.elementFromPoint(touch.clientX, touch.clientY);
-      if (el) {
-        const id = getItemId(el);
-        if (id) applyId(id);
-      }
+      e.preventDefault();
+      updateLasso(ds.startX, ds.startY, t.clientX, t.clientY);
+      updateSelection(ds.startX, ds.startY, t.clientX, t.clientY, false);
     }, { signal: sig.signal, passive: false });
 
     root.addEventListener('touchend', () => {
       clearTimeout(touchTimer);
-      if (touchActive) {
-        touchActive = false;
-        endDrag();
-      }
+      if (touchActive) { touchActive = false; endDrag(); }
     }, sig);
 
     root.addEventListener('touchcancel', () => {
