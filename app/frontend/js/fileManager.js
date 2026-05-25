@@ -389,11 +389,6 @@ const FileManagerModule = {
     });
 
     this._bindActions(content);
-
-    // Bind drag-select to the full view container so dragging works
-    // from anywhere below the drop zone, not just inside the table
-    const viewContainer = document.getElementById('view-files');
-    if (viewContainer) this._bindDragSelect(viewContainer, sig);
   },
 
   _visToggle(f) {
@@ -494,6 +489,10 @@ const FileManagerModule = {
       const btn = e.target.closest('[data-action="visibility"]');
       if (btn) e.preventDefault();
     }, sig);
+
+    // ── Drag-to-select on the full view area (not just the table) ─────────
+    const viewContainer = document.getElementById('view-files');
+    if (viewContainer) this._bindDragSelect(viewContainer, sig);
 
     root.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-action]');
