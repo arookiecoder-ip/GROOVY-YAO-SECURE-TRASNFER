@@ -933,10 +933,17 @@
   position: fixed;
   z-index: 9998;
   pointer-events: none;
-  background: rgba(0, 245, 255, 0.08);
-  border: 1.5px solid rgba(0, 245, 255, 0.6);
-  border-radius: 2px;
-  box-shadow: 0 0 8px rgba(0, 245, 255, 0.15);
+  /* Works on both dark and light themes */
+  background: rgba(0, 120, 215, 0.12);
+  border: 1.5px solid rgba(0, 120, 215, 0.7);
+  border-radius: 3px;
+  /* No box-shadow — keeps it clean like Google Drive */
+}
+
+/* Light theme: slightly more visible tint */
+[data-theme="light"] .drag-lasso {
+  background: rgba(0, 100, 200, 0.10);
+  border-color: rgba(0, 100, 200, 0.65);
 }
 
 /* Prevent text selection while dragging */
@@ -946,7 +953,7 @@
   user-select: none;
 }
 
-/* Default cursor on rows/cards — pointer shows they're interactive */
+/* Default cursor on rows/cards */
 .file-list tbody tr,
 .file-card {
   cursor: default;

@@ -589,6 +589,8 @@ const FileManagerModule = {
       if (ds.rect) return ds.rect;
       const el = document.createElement('div');
       el.className = 'drag-lasso';
+      // Explicit inline reset so no inherited background can bleed through
+      el.style.cssText = 'position:fixed;z-index:9998;pointer-events:none;margin:0;padding:0;';
       document.body.appendChild(el);
       ds.rect = el;
       return el;
