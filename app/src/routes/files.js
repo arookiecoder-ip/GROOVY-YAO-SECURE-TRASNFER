@@ -15,15 +15,6 @@ const {
 } = require('../services/encryption');
 const { validateFileType, MAGIC_BYTES_SAMPLE } = require('../middleware/fileType');
 
-const EXPIRY_OPTIONS = {
-  '1h':    60 * 60 * 1000,
-  '6h':    6 * 60 * 60 * 1000,
-  '24h':   24 * 60 * 60 * 1000,
-  '7d':    7 * 24 * 60 * 60 * 1000,
-  '30d':   30 * 24 * 60 * 60 * 1000,
-  'never': null,
-};
-
 function ipHash(ip) {
   return crypto
     .createHmac('sha256', Buffer.from(config.ipHmacKey, 'hex'))
@@ -83,9 +74,6 @@ function downloadPage(row, filename) {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
-  const expiryStr = row.expires_at
-    ? new Date(row.expires_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-    : 'Never';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -119,7 +107,6 @@ function downloadPage(row, filename) {
     <div class="meta">
       <div class="meta-row"><span class="meta-label">SIZE</span><span class="meta-value">${formatBytes(row.size_bytes)}</span></div>
       <div class="meta-row"><span class="meta-label">UPLOADED</span><span class="meta-value">${uploadedAt}</span></div>
-      <div class="meta-row"><span class="meta-label">EXPIRES</span><span class="meta-value">${expiryStr}</span></div>
       <div class="meta-row"><span class="meta-label">DOWNLOADS</span><span class="meta-value">${row.download_count}</span></div>
     </div>
     <a href="?dl=1" class="btn">⬇ DOWNLOAD FILE</a>
@@ -166,9 +153,6 @@ async function filesRoutes(fastify) {
   fastify.post('/upload/simple', async (req, reply) => {
     const data = await req.file();
     if (!data) return reply.code(400).send({ error: 'No file' });
-
-    const expiresIn = req.body?.expires || data.fields?.expires?.value || '24h';
-    const expiryMs = (expiresIn in EXPIRY_OPTIONS) ? EXPIRY_OPTIONS[expiresIn] : EXPIRY_OPTIONS['24h'];
 
     const fileId = uuidv4();
     const storageId = uuidv4();
@@ -230,7 +214,7 @@ async function filesRoutes(fastify) {
     const sha256 = hasher.digest('hex');
     const { ciphertext: encName, iv: nameIv, tag: nameTag } = encryptFilename(data.filename, fileId);
     const mimeType = data.mimetype || 'application/octet-stream';
-    const expiresAt = expiryMs !== null ? now + expiryMs : null;
+    const expiresAt = null; // files never expire
 
     const db = getDb();
     db.prepare(`
@@ -426,27 +410,6 @@ async function filesRoutes(fastify) {
     }
     broadcast('FILE_UPDATED', { fileId: req.params.id });
     return reply.send({ ok: true, isPublic, shareToken });
-  });
-
-  // ── Extend expiry ─────────────────────────────────────────────────────────
-  fastify.patch('/files/:id/expiry', async (req, reply) => {
-    const { expiresIn } = req.body || {};
-    if (!(expiresIn in EXPIRY_OPTIONS)) return reply.code(400).send({ error: 'Invalid expiresIn' });
-
-    const db = getDb();
-    const row = db.prepare('SELECT id, expires_at FROM files WHERE id = ? AND status = ?').get(req.params.id, 'complete');
-    if (!row) return reply.code(404).send({ error: 'File not found' });
-
-    let newExpiry;
-    if (EXPIRY_OPTIONS[expiresIn] === null) {
-      newExpiry = null;
-    } else {
-      const base = row.expires_at && row.expires_at > Date.now() ? row.expires_at : Date.now();
-      newExpiry = base + EXPIRY_OPTIONS[expiresIn];
-    }
-    db.prepare('UPDATE files SET expires_at = ? WHERE id = ?').run(newExpiry, row.id);
-    broadcast('FILE_UPDATED', { fileId: row.id });
-    return reply.send({ ok: true, expires_at: newExpiry, never_expires: newExpiry === null });
   });
 
   // ── ZIP streaming (multi-file) ────────────────────────────────────────────

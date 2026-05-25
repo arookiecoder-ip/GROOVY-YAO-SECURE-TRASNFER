@@ -3,7 +3,6 @@ const FileManagerModule = {
   _files: [],
   _view: localStorage.getItem('fm-view') || 'list',
   _sort: localStorage.getItem('fm-sort') || 'date',
-  _expiryInterval: null,
   _actionsAbort: null,
 
   // Pagination state
@@ -341,7 +340,6 @@ const FileManagerModule = {
               <th>NAME</th>
               <th>SIZE</th>
               <th>UPLOADED D&T</th>
-              <th class="col-expiry">EXPIRES</th>
               <th class="col-downloads">Downloads</th>
               <th>ACTIONS</th>
             </tr>
@@ -391,7 +389,11 @@ const FileManagerModule = {
     });
 
     this._bindActions(content);
-    this._startExpiryCountdown(content);
+
+    // Bind drag-select to the full view container so dragging works
+    // from anywhere below the drop zone, not just inside the table
+    const viewContainer = document.getElementById('view-files');
+    if (viewContainer) this._bindDragSelect(viewContainer, sig);
   },
 
   _visToggle(f) {
@@ -424,9 +426,6 @@ const FileManagerModule = {
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="5" height="5" rx="0.5"/><rect x="10" y="1" width="5" height="5" rx="0.5"/><rect x="1" y="10" width="5" height="5" rx="0.5"/><rect x="2.5" y="2.5" width="2" height="2"/><rect x="11.5" y="2.5" width="2" height="2"/><rect x="2.5" y="11.5" width="2" height="2"/><path d="M10 10h2v2h-2zM12 12h3M12 10h3v2M10 12v3"/></svg>
       </button>
       ${this._visToggle(f)}
-      <button class="act-btn" data-action="extend" data-id="${f.id}" title="Extend expiry">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2.5 1.5"/></svg>
-      </button>
       <button class="act-btn act-btn--danger" data-action="delete" data-id="${f.id}" title="Delete">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9"/></svg>
       </button>
@@ -434,7 +433,6 @@ const FileManagerModule = {
   },
 
   _listRow(f) {
-    const cls = Utils.expiryClass(f.expires_at);
     const isSelected = this._selected.has(f.id);
     return `
       <tr class="${isSelected ? 'file-row-selected' : ''}">
@@ -446,7 +444,6 @@ const FileManagerModule = {
         <td><span class="file-name" title="${Utils.escape(f.name)}">${Utils.escape(f.name)}</span></td>
         <td class="file-size">${Utils.formatBytes(f.size_bytes)}</td>
         <td class="file-size">${this._formatIST(f.created_at)}</td>
-        <td class="file-expiry col-expiry ${cls}" data-expires="${f.expires_at || ''}">${Utils.formatExpiry(f.expires_at)}</td>
         <td class="file-size col-downloads">${f.download_count}</td>
         <td class="file-actions">${this._actionBar(f)}</td>
       </tr>
@@ -498,9 +495,6 @@ const FileManagerModule = {
       if (btn) e.preventDefault();
     }, sig);
 
-    // ── Drag-to-select (mouse + touch) ────────────────────────────────────
-    this._bindDragSelect(root, sig);
-
     root.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
@@ -521,9 +515,6 @@ const FileManagerModule = {
       } else if (action === 'visibility') {
         btn.blur();
         await this._toggleVisibility(id, btn.dataset.public === 'true');
-      } else if (action === 'extend') {
-        if (document.getElementById('expiry-popover')) { document.getElementById('expiry-popover').remove(); return; }
-        this._extendExpiry(id, btn);
       } else if (action === 'delete') {
         if (!await Utils.confirm('Delete this file?', 'Delete')) return;
         await this._deleteFile(id);
@@ -831,78 +822,6 @@ const FileManagerModule = {
     }
   },
 
-  _extendExpiry(id, anchorEl) {
-    document.getElementById('expiry-popover')?.remove();
-
-    const opts = [
-      { label: '+1H',  value: '1h' },
-      { label: '+6H',  value: '6h' },
-      { label: '+24H', value: '24h' },
-      { label: '+7D',  value: '7d' },
-      { label: '+30D', value: '30d' },
-      { label: '∞ NEVER', value: 'never' },
-    ];
-
-    const pop = document.createElement('div');
-    pop.id = 'expiry-popover';
-    pop.className = 'expiry-popover';
-    pop.innerHTML = `
-      <div class="expiry-pop-title">// SET EXPIRY</div>
-      <div class="expiry-pop-opts">
-        ${opts.map(o => `<button class="expiry-pop-btn" data-val="${o.value}">${o.label}</button>`).join('')}
-      </div>
-    `;
-
-    document.body.appendChild(pop);
-    const rect = anchorEl.getBoundingClientRect();
-    const popW = pop.offsetWidth;
-    const popH = pop.offsetHeight;
-    const inGrid = !!anchorEl.closest('.file-card');
-    if (inGrid) {
-      let left = rect.right + 6;
-      if (left + popW > window.innerWidth - 8) left = rect.left - popW - 6;
-      let top = rect.top;
-      if (top + popH > window.innerHeight - 8) top = window.innerHeight - popH - 8;
-      if (top < 8) top = 8;
-      pop.style.top = `${top}px`;
-      pop.style.left = `${left}px`;
-    } else {
-      let left = rect.left;
-      if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8;
-      if (left < 8) left = 8;
-      let top = rect.bottom + 6;
-      if (top + popH > window.innerHeight - 8) top = rect.top - popH - 6;
-      if (top < 8) top = 8;
-      pop.style.top = `${top}px`;
-      pop.style.left = `${left}px`;
-    }
-
-    const cleanup = () => pop.remove();
-
-    pop.querySelectorAll('.expiry-pop-btn').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        cleanup();
-        const expiresIn = btn.dataset.val;
-        const res = await Utils.apiFetch(`/api/files/${id}/expiry`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ expiresIn }),
-          credentials: 'same-origin',
-        });
-        if (res.ok) {
-          Notifications.success('Expiry updated');
-          this.refresh();
-        } else {
-          Notifications.error('Extend failed');
-        }
-      });
-    });
-
-    setTimeout(() => document.addEventListener('click', function handler(e) {
-      if (!pop.contains(e.target)) { cleanup(); document.removeEventListener('click', handler); }
-    }), 0);
-  },
-
   async _deleteFile(id) {
     const res = await Utils.apiFetch(`/api/files/${id}`, { method: 'DELETE', credentials: 'same-origin' });
     if (res.ok) {
@@ -920,15 +839,4 @@ const FileManagerModule = {
     }
   },
 
-  _startExpiryCountdown(root) {
-    clearInterval(this._expiryInterval);
-    this._expiryInterval = setInterval(() => {
-      root.querySelectorAll('[data-expires]').forEach((el) => {
-        const ts = parseInt(el.dataset.expires, 10);
-        if (!ts) return;
-        el.textContent = Utils.formatExpiry(ts);
-        el.className = `file-expiry ${Utils.expiryClass(ts)}`;
-      });
-    }, 10000);
-  },
 };

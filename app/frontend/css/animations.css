@@ -138,9 +138,5 @@
 }
 .flicker { animation: flicker 4s linear infinite; }
 
-/* ── Expiry countdown colors (applied via JS) ── */
-.expiry-warning { color: var(--color-yellow) !important; }
-.expiry-critical { color: var(--color-red) !important; animation: flicker 2s linear infinite; }
-
 /* ── Button press ── */
 .btn:active:not(:disabled) { transform: scale(0.97); }

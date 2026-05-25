@@ -1,6 +1,4 @@
 const cron = require('node-cron');
-const fs = require('fs');
-const path = require('path');
 const { getDb } = require('../db/db');
 const { config } = require('../config');
 
@@ -10,24 +8,6 @@ const STALE_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 function deleteExpiredFiles() {
   const db = getDb();
   const now = Date.now();
-
-  const expired = db.prepare(`
-    SELECT id, storage_id FROM files
-    WHERE expires_at IS NOT NULL AND expires_at < ? AND status = 'complete'
-  `).all(now);
-
-  if (expired.length > 0) {
-    for (const row of expired) {
-      const filePath = path.join(config.storagePath, row.storage_id);
-      try { fs.unlinkSync(filePath); } catch (_e) { /* already gone */ }
-    }
-
-    const ids = expired.map((r) => r.id);
-    const placeholders = ids.map(() => '?').join(',');
-    db.prepare(`DELETE FROM files WHERE id IN (${placeholders})`).run(...ids);
-
-    console.log(`[expiry] purged ${expired.length} expired file(s)`);
-  }
 
   // Fix #15: only delete unused expired challenges (keep used ones for 1 day for audit)
   db.prepare('DELETE FROM auth_challenges WHERE used = 0 AND expires_at < ?').run(now);

@@ -13,16 +13,6 @@ const UploadManager = {
     const dz = document.getElementById('drop-zone');
     const fi = document.getElementById('file-input');
 
-    // Expiry picker — clicks handled here, not bubbled to drop zone
-    document.querySelectorAll('.expiry-opt').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        document.querySelectorAll('.expiry-opt').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        this._selectedExpiry = btn.dataset.expires;
-      });
-    });
-
     dz.addEventListener('click', () => fi.click());
     dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag-over', 'neon-pulse'); });
     dz.addEventListener('dragleave', () => dz.classList.remove('drag-over', 'neon-pulse'));

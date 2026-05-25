@@ -63,7 +63,6 @@
 
 .file-name { color: var(--color-text-bright); font-weight: 500; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-size { color: var(--color-text-dim); white-space: nowrap; }
-.file-expiry { white-space: nowrap; font-size: 0.88rem; }
 .file-actions { display: flex; gap: 2px; align-items: center; white-space: nowrap; }
 .file-list td.file-actions { width: 1%; white-space: nowrap; text-align: right; }
 .file-list .btn { flex-shrink: 0; }
@@ -262,35 +261,6 @@
   outline: 1px solid currentColor;
 }
 
-/* ── Expiry popover ── */
-.expiry-popover {
-  position: fixed;
-  z-index: 9999;
-  background: var(--color-surface, #0d1117);
-  border: 1px solid var(--color-cyan);
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 160px;
-  box-shadow: 0 0 16px rgba(0,245,255,0.15);
-}
-.expiry-pop-title { font-size: 0.7rem; color: var(--color-text-dim); letter-spacing: 0.1em; }
-.expiry-pop-opts { display: flex; flex-direction: column; gap: 4px; }
-.expiry-pop-btn {
-  background: transparent;
-  border: 1px solid var(--color-border2);
-  color: var(--color-text);
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  padding: 6px 12px;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.15s;
-  letter-spacing: 0.05em;
-}
-.expiry-pop-btn:hover { border-color: var(--color-cyan); color: var(--color-cyan); background: rgba(0,245,255,0.07); }
-
 /* ── Confirm modal ── */
 .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; display: flex; align-items: center; justify-content: center; }
 .confirm-box { background: var(--color-surface); border: 1px solid var(--color-border2); padding: 24px 28px; min-width: 280px; max-width: 400px; }
@@ -302,7 +272,6 @@
 .empty-state-icon { font-size: 2rem; margin-bottom: 12px; }
 .empty-state-text { font-size: 0.85rem; letter-spacing: 0.08em; }
 
-.file-list .col-expiry,
 .file-list .col-downloads { display: table-cell; }
 
 /* ── Mobile ── */
@@ -327,10 +296,8 @@
   .file-list td:nth-child(2) { display: block; flex: 1; padding: 0; border: none; font-size: 0.78rem; color: var(--color-text-dim); }
   /* date */
   .file-list td:nth-child(3) { display: block; flex: 1; padding: 0; border: none; font-size: 0.78rem; color: var(--color-text-dim); text-align: right; }
-  /* expiry — hide on mobile, not enough space */
-  .file-list td:nth-child(4) { display: none; }
   /* downloads — hide */
-  .file-list td:nth-child(5) { display: none; }
+  .file-list td:nth-child(4) { display: none; }
   /* actions */
   .file-list td.file-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; width: 100%; text-align: left; }
   .file-list .col-downloads { display: none; }

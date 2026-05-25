@@ -13,16 +13,6 @@ const {
 const { broadcast } = require('./ws');
 const { validateFileType, MAGIC_BYTES_SAMPLE } = require('../middleware/fileType');
 
-const EXPIRY_OPTIONS = {
-  '1h':    60 * 60 * 1000,
-  '6h':    6 * 60 * 60 * 1000,
-  '24h':   24 * 60 * 60 * 1000,
-  '7d':    7 * 24 * 60 * 60 * 1000,
-  '30d':   30 * 24 * 60 * 60 * 1000,
-  // Fix #6: include 'never' so upload-request files don't silently get 24h expiry
-  'never': null,
-};
-
 function ipHash(ip) {
   return crypto
     .createHmac('sha256', Buffer.from(config.ipHmacKey, 'hex'))
@@ -55,13 +45,10 @@ function storagePath(storageId) {
 async function chunksRoutes(fastify) {
   // ── Init upload ───────────────────────────────────────────────────────────
   fastify.post('/upload/chunked/init', async (req, reply) => {
-    const { filename, mimeType, totalSize, totalChunks, sha256, expiresIn = '24h' } = req.body || {};
+    const { filename, mimeType, totalSize, totalChunks } = req.body || {};
 
     if (!filename || !mimeType || !totalSize || !totalChunks) {
       return reply.code(400).send({ error: 'Missing required fields' });
-    }
-    if (!EXPIRY_OPTIONS[expiresIn]) {
-      return reply.code(400).send({ error: 'Invalid expiresIn' });
     }
     if (totalChunks < 1 || totalChunks > 10000) {
       return reply.code(400).send({ error: 'Invalid chunk count' });
@@ -77,7 +64,7 @@ async function chunksRoutes(fastify) {
         (id, original_name, original_name_iv, mime_type, total_size, total_chunks,
          sha256_expected, expires_in, created_at, updated_at, status)
       VALUES (?,?,?,?,?,?,?,?,?,?,'in_progress')
-    `).run(uploadId, filename, '', mimeType, totalSize, totalChunks, sha256, expiresIn, now, now);
+    `).run(uploadId, filename, '', mimeType, totalSize, totalChunks, 'none', 'never', now, now);
 
     fs.mkdirSync(chunkDir(uploadId), { recursive: true });
 
@@ -223,12 +210,8 @@ async function chunksRoutes(fastify) {
     const actualSha = plainHasher.digest('hex');
 
     const totalSize = received.reduce((s, c) => s + c.size_bytes, 0);
-    // Fix #6: handle 'never' expiry — null means no expiry
-    const expiryMs = upload.expires_in in EXPIRY_OPTIONS
-      ? EXPIRY_OPTIONS[upload.expires_in]
-      : EXPIRY_OPTIONS['24h'];
     const now = Date.now();
-    const expiresAt = expiryMs !== null ? now + expiryMs : null;
+    const expiresAt = null; // files never expire
 
     // Fix #2: validate file type using the first chunk's magic bytes
     try {
