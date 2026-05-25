@@ -21,6 +21,9 @@ const FileManagerModule = {
     rect: null,           // the visual lasso <div>
     preSelected: null,    // Set of ids selected BEFORE drag started
     container: null,      // the files-content element
+    _dragging: false,     // true only after mouse moves beyond threshold
+    _additive: false,
+    _lastAdditive: false,
   },
 
   init() {
@@ -666,15 +669,24 @@ const FileManagerModule = {
     // ── Start drag ─────────────────────────────────────────────────────────
 
     const startDrag = (clientX, clientY, additive) => {
-      ds.active    = true;
-      ds.startX    = clientX;
-      ds.startY    = clientY;
+      ds.active      = true;
+      ds.startX      = clientX;
+      ds.startY      = clientY;
       ds.preSelected = new Set(this._selected);
+      ds._dragging   = false; // real drag hasn't started yet — waiting for threshold
+      ds._additive   = additive;
       document.body.style.userSelect       = 'none';
       document.body.style.webkitUserSelect = 'none';
-      updateLasso(clientX, clientY, clientX, clientY);
+    };
+
+    // Called once the mouse moves beyond DRAG_THRESHOLD — commits the drag
+    const DRAG_THRESHOLD = 5; // px
+    const commitDrag = (additive) => {
+      if (ds._dragging) return;
+      ds._dragging = true;
+      updateLasso(ds.startX, ds.startY, _curX, _curY);
       if (!additive) {
-        // Clear selection immediately when starting a fresh drag
+        // Only clear selection when a real drag is confirmed
         this._selected.clear();
         getAllSelectables().forEach((el) => {
           const cb = el.querySelector('.fm-checkbox[data-id]');
@@ -690,7 +702,8 @@ const FileManagerModule = {
 
     const endDrag = () => {
       if (!ds.active) return;
-      ds.active = false;
+      ds.active    = false;
+      ds._dragging = false;
       removeLasso();
       stopAutoScroll();
       document.body.style.userSelect       = '';
@@ -747,10 +760,12 @@ const FileManagerModule = {
       if (e.button !== 0) return;
       // Don't start lasso if clicking on an interactive element
       if (e.target.closest('[data-action], .fm-checkbox, .fm-check-label, button, a, input, select')) return;
-      // Must be on a row/card or the container background
+      // Don't start lasso on a row/card — those are handled by the click handler.
+      // Only start lasso on the container background (empty space).
+      if (getSelectableEl(e.target)) return;
       const additive = e.shiftKey || e.ctrlKey || e.metaKey;
       startDrag(e.clientX, e.clientY, additive);
-      e.preventDefault(); // prevent text selection
+      e.preventDefault(); // prevent text selection during lasso
     }, sig);
 
     // mousemove on document so lasso works even if cursor leaves the container
@@ -760,6 +775,14 @@ const FileManagerModule = {
       _curX = e.clientX;
       _curY = e.clientY;
       ds._lastAdditive = e.shiftKey || e.ctrlKey || e.metaKey;
+
+      // Only commit to a drag once the mouse moves beyond the threshold
+      if (!ds._dragging) {
+        const dx = _curX - ds.startX;
+        const dy = _curY - ds.startY;
+        if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
+        commitDrag(ds._additive);
+      }
 
       // Update lasso visually on every event (cheap — just CSS)
       updateLasso(ds.startX, ds.startY, _curX, _curY);
