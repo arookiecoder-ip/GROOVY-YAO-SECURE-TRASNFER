@@ -647,6 +647,10 @@ const FileManagerModule = {
         if (rectsIntersect(lassoRect, rects[i])) base.add(id);
       });
 
+      // If the lasso covers nothing and we're not in additive mode, don't wipe
+      // the existing selection — a stray drag over empty space should be a no-op.
+      if (!additive && base.size === 0) return;
+
       this._selected = base;
 
       // Batch DOM writes after all reads
