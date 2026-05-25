@@ -635,12 +635,6 @@ const FileManagerModule = {
 
     const updateSelection = (x1, y1, x2, y2, additive) => {
       const lassoRect = makeRect(x1, y1, x2, y2);
-
-      // Ignore tiny lassos (< 8×8 px) — these are accidental micro-drags, not
-      // intentional selections. Without this guard a stray mouse movement while
-      // clicking empty space would replace the whole selection.
-      if (!additive && lassoRect.width < 8 && lassoRect.height < 8) return;
-
       const base = additive ? new Set(ds.preSelected) : new Set();
 
       // Read all bounding rects in one pass (batch layout reads before writes)
@@ -652,10 +646,6 @@ const FileManagerModule = {
         if (!id) return;
         if (rectsIntersect(lassoRect, rects[i])) base.add(id);
       });
-
-      // If the lasso covers nothing and we're not in additive mode, don't wipe
-      // the existing selection — a stray drag over empty space should be a no-op.
-      if (!additive && base.size === 0) return;
 
       this._selected = base;
 
@@ -690,7 +680,7 @@ const FileManagerModule = {
     };
 
     // Called once the mouse moves beyond DRAG_THRESHOLD — commits the drag
-    const DRAG_THRESHOLD = 12; // px — large enough to distinguish click from drag
+    const DRAG_THRESHOLD = 5; // px
     const commitDrag = (additive) => {
       if (ds._dragging) return;
       ds._dragging = true;
@@ -705,12 +695,18 @@ const FileManagerModule = {
 
     const endDrag = () => {
       if (!ds.active) return;
+      const wasDragging = ds._dragging;
       ds.active    = false;
       ds._dragging = false;
       removeLasso();
       stopAutoScroll();
       document.body.style.userSelect       = '';
       document.body.style.webkitUserSelect = '';
+      // Plain click on empty space (no real drag) → clear selection.
+      // A real drag replaces selection via updateSelection() during the drag.
+      if (!wasDragging && !ds._additive) {
+        this._clearSelection();
+      }
     };
 
     // ── Auto-scroll when cursor is near viewport edges ─────────────────────
