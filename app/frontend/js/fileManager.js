@@ -684,18 +684,11 @@ const FileManagerModule = {
     const commitDrag = (additive) => {
       if (ds._dragging) return;
       ds._dragging = true;
+      // Don't clear selection here — updateSelection() already starts from an
+      // empty base when non-additive, so the lasso result replaces the old
+      // selection naturally as it grows. Clearing eagerly here caused plain
+      // clicks on empty space (with tiny mouse movement) to wipe the selection.
       updateLasso(ds.startX, ds.startY, _curX, _curY);
-      if (!additive) {
-        // Only clear selection when a real drag is confirmed
-        this._selected.clear();
-        getAllSelectables().forEach((el) => {
-          const cb = el.querySelector('.fm-checkbox[data-id]');
-          if (cb) cb.checked = false;
-          if (el.tagName === 'TR') el.classList.remove('file-row-selected');
-          else el.classList.remove('file-card-selected');
-        });
-        this._updateBulkBar();
-      }
     };
 
     // ── End drag ───────────────────────────────────────────────────────────
