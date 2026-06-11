@@ -692,12 +692,21 @@ const FileManagerModule = {
       ds.active      = true;
       ds.startX      = clientX;
       ds.startY      = clientY;
+      // Anchor in DOCUMENT coordinates so the lasso stays glued to the content
+      // when the page scrolls mid-drag (auto-scroll or mouse wheel).
+      ds.startDocX   = clientX + window.scrollX;
+      ds.startDocY   = clientY + window.scrollY;
       ds.preSelected = new Set(this._selected);
       ds._dragging   = false; // real drag hasn't started yet — waiting for threshold
       ds._additive   = additive;
       document.body.style.userSelect       = 'none';
       document.body.style.webkitUserSelect = 'none';
     };
+
+    // Anchor converted back to current viewport coordinates — shifts as the
+    // page scrolls so element getBoundingClientRect() comparisons stay valid
+    const anchorX = () => ds.startDocX - window.scrollX;
+    const anchorY = () => ds.startDocY - window.scrollY;
 
     // Called once the mouse moves beyond DRAG_THRESHOLD — commits the drag
     const DRAG_THRESHOLD = 5; // px
@@ -708,7 +717,7 @@ const FileManagerModule = {
       // empty base when non-additive, so the lasso result replaces the old
       // selection naturally as it grows. Clearing eagerly here caused plain
       // clicks on empty space (with tiny mouse movement) to wipe the selection.
-      updateLasso(ds.startX, ds.startY, _curX, _curY);
+      updateLasso(anchorX(), anchorY(), _curX, _curY);
     };
 
     // ── End drag ───────────────────────────────────────────────────────────
@@ -760,10 +769,11 @@ const FileManagerModule = {
 
       if (delta !== 0) {
         window.scrollBy(0, delta);
-        // After scrolling, re-evaluate selection with updated bounding rects
-        updateSelection(ds.startX, ds.startY, _curX, _curY,
+        // After scrolling, re-evaluate with the anchor mapped to the new
+        // viewport position so the lasso keeps growing past one screenful
+        updateSelection(anchorX(), anchorY(), _curX, _curY,
           ds._lastAdditive || false);
-        updateLasso(ds.startX, ds.startY, _curX, _curY);
+        updateLasso(anchorX(), anchorY(), _curX, _curY);
       }
 
       _scrollRaf = requestAnimationFrame(autoScrollTick);
@@ -810,7 +820,7 @@ const FileManagerModule = {
       }
 
       // Update lasso visually on every event (cheap — just CSS)
-      updateLasso(ds.startX, ds.startY, _curX, _curY);
+      updateLasso(anchorX(), anchorY(), _curX, _curY);
 
       // Throttle the expensive selection recalc to once per animation frame
       if (!_rafPending) {
@@ -818,7 +828,7 @@ const FileManagerModule = {
         requestAnimationFrame(() => {
           _rafPending = false;
           if (!ds.active) return;
-          updateSelection(ds.startX, ds.startY, _curX, _curY, ds._lastAdditive);
+          updateSelection(anchorX(), anchorY(), _curX, _curY, ds._lastAdditive);
         });
       }
 
@@ -827,13 +837,24 @@ const FileManagerModule = {
 
     const onMouseUp = () => { endDrag(); };
 
+    // Wheel/trackpad scrolling mid-drag moves the content under a stationary
+    // cursor — mousemove won't fire, so recompute on scroll as well
+    const onScroll = () => {
+      if (!ds.active || !ds._dragging) return;
+      updateLasso(anchorX(), anchorY(), _curX, _curY);
+      updateSelection(anchorX(), anchorY(), _curX, _curY,
+        ds._lastAdditive || ds._additive);
+    };
+
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('scroll', onScroll, { passive: true });
 
     // Clean up document-level listeners when the AbortController fires
     sig.signal.addEventListener('abort', () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('scroll', onScroll);
       stopAutoScroll();
       endDrag();
     });
@@ -868,8 +889,12 @@ const FileManagerModule = {
         return;
       }
       e.preventDefault();
-      updateLasso(ds.startX, ds.startY, t.clientX, t.clientY);
-      updateSelection(ds.startX, ds.startY, t.clientX, t.clientY, false);
+      _curX = t.clientX;
+      _curY = t.clientY;
+      updateLasso(anchorX(), anchorY(), _curX, _curY);
+      updateSelection(anchorX(), anchorY(), _curX, _curY, false);
+      // Dragging the finger to the screen edge auto-scrolls, same as mouse
+      startAutoScroll();
     }, { signal: sig.signal, passive: false });
 
     root.addEventListener('touchend', () => {
