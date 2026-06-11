@@ -2,25 +2,31 @@
 .file-manager-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
-.file-manager-toolbar .sort-group { display: flex; gap: 4px; margin-left: auto; }
-.file-manager-toolbar .fm-search { padding: 6px 10px; font-size: 0.78rem; width: 150px; min-width: 0; }
+.file-manager-toolbar .fm-search { padding: 6px 10px; font-size: 0.78rem; width: 200px; min-width: 0; margin-left: auto; }
 
-.sort-btn {
+.fm-select {
+  appearance: none;
+  -webkit-appearance: none;
   background: transparent;
   border: 1px solid var(--color-border2);
+  border-radius: var(--radius);
   color: var(--color-text-dim);
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  padding: 4px 10px;
-  cursor: pointer;
-  transition: all var(--transition);
   letter-spacing: 0.08em;
+  padding: 6px 24px 6px 10px;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M1 1l3 3 3-3' fill='none' stroke='%23606080' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
 }
-.sort-btn.active, .sort-btn:hover { border-color: var(--color-cyan); color: var(--color-cyan); }
+.fm-select:hover, .fm-select:focus { border-color: var(--color-cyan-dim); color: var(--color-text); outline: none; }
+.fm-select option { background: var(--color-surface); color: var(--color-text); }
 
 .view-toggle {
   display: flex;
@@ -46,23 +52,27 @@
 }
 .file-list th {
   text-align: left;
-  font-size: 0.82rem;
+  font-size: 0.66rem;
+  font-weight: 500;
   color: var(--color-text-dim);
-  letter-spacing: 0.12em;
-  padding: 10px 14px;
+  letter-spacing: 0.15em;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
 }
 .file-list td {
-  padding: 18px 14px;
+  padding: 14px;
   border-bottom: 1px solid var(--color-border);
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   color: var(--color-text);
   vertical-align: middle;
 }
-.file-list tr:hover td { background: rgba(255,255,255,0.02); }
+.file-list tbody tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+.file-list tbody tr:hover td { background: rgba(255,255,255,0.035); }
+[data-theme="light"] .file-list tbody tr:nth-child(even) td { background: rgba(0,0,0,0.025); }
+[data-theme="light"] .file-list tbody tr:hover td { background: rgba(0,0,0,0.045); }
 
-.file-name { color: var(--color-text-bright); font-weight: 500; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-name { color: var(--color-text-bright); font-weight: 500; font-size: 0.95rem; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-size { color: var(--color-text-dim); white-space: nowrap; }
 .file-actions { display: flex; gap: 2px; align-items: center; white-space: nowrap; }
 .file-list td.file-actions { width: 1%; white-space: nowrap; text-align: right; }
@@ -90,11 +100,11 @@
   border-color: var(--color-border);
   background: rgba(0,245,255,0.06);
 }
-.act-btn--danger { color: var(--color-red); }
+.act-btn--danger { color: var(--color-text-dim); }
 .act-btn--danger:hover:not(:disabled) {
   color: var(--color-red);
-  border-color: var(--color-red);
-  background: rgba(255,0,60,0.08);
+  border-color: rgba(255,0,60,0.4);
+  background: rgba(255,0,60,0.06);
 }
 .act-btn--disabled { opacity: 0.25; cursor: not-allowed; }
 
@@ -273,13 +283,10 @@
 .empty-state-icon { font-size: 2rem; margin-bottom: 12px; }
 .empty-state-text { font-size: 0.85rem; letter-spacing: 0.08em; }
 
-.file-list .col-downloads { display: table-cell; }
-
 /* ── Mobile ── */
 @media (max-width: 640px) {
   .file-manager-toolbar { flex-wrap: wrap; gap: 8px; }
-  .file-manager-toolbar .sort-group { margin-left: 0; }
-  .file-manager-toolbar .fm-search { flex: 1 1 100%; width: auto; }
+  .file-manager-toolbar .fm-search { flex: 1 1 100%; width: auto; margin-left: 0; order: 5; }
 
   /* Stacked card layout — kill table structure on mobile */
   .file-list, .file-list tbody { display: block; width: 100%; }
@@ -292,17 +299,17 @@
     padding: 10px 0;
     gap: 0;
   }
-  /* name full width */
-  .file-list td:nth-child(1) { display: block; width: 100%; padding: 0 0 4px; border: none; font-size: 0.9rem; }
+  .file-list tbody tr:nth-child(even) td { background: none; }
+  /* checkbox inline with name */
+  .file-list td.col-check { display: inline-flex; align-items: center; width: auto; padding: 0 8px 0 0 !important; border: none; }
+  /* name takes remaining first-line width */
+  .file-list td:nth-child(2) { display: block; flex: 1 1 auto; min-width: 0; padding: 0 0 4px; border: none; font-size: 0.9rem; }
   /* size */
-  .file-list td:nth-child(2) { display: block; flex: 1; padding: 0; border: none; font-size: 0.78rem; color: var(--color-text-dim); }
+  .file-list td:nth-child(3) { display: block; flex: 1; padding: 0; border: none; font-size: 0.78rem; color: var(--color-text-dim); }
   /* date */
-  .file-list td:nth-child(3) { display: block; flex: 1; padding: 0; border: none; font-size: 0.78rem; color: var(--color-text-dim); text-align: right; }
-  /* downloads — hide */
-  .file-list td:nth-child(4) { display: none; }
+  .file-list td:nth-child(4) { display: block; flex: 1; padding: 0; border: none; font-size: 0.78rem; color: var(--color-text-dim); text-align: right; }
   /* actions */
   .file-list td.file-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; width: 100%; text-align: left; }
-  .file-list .col-downloads { display: none; }
   .file-name { max-width: 100%; }
   .file-actions { gap: 6px; flex-wrap: wrap; }
   .file-actions .btn { padding: 4px 10px; font-size: 0.7rem; }
@@ -469,7 +476,7 @@
   width: 15px;
   height: 15px;
   min-width: 15px;
-  border: 1.5px solid var(--color-border2);
+  border: 1px solid var(--color-border2);
   border-radius: 3px;
   background: transparent;
   cursor: pointer;
@@ -878,35 +885,6 @@
   }
 }
 
-/* ── Per-page selector ── */
-.perpage-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.perpage-label {
-  font-size: 0.68rem;
-  color: var(--color-text-dim);
-  letter-spacing: 0.08em;
-  margin-right: 2px;
-}
-.perpage-btn {
-  background: transparent;
-  border: 1px solid var(--color-border2);
-  color: var(--color-text-dim);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  padding: 3px 8px;
-  cursor: pointer;
-  transition: all var(--transition);
-  letter-spacing: 0.06em;
-}
-.perpage-btn.active,
-.perpage-btn:hover {
-  border-color: var(--color-cyan);
-  color: var(--color-cyan);
-}
-
 /* ── File count / range label ── */
 .fm-table-header {
   font-size: 0.7rem;
@@ -955,7 +933,6 @@
 }
 
 @media (max-width: 640px) {
-  .perpage-group { display: none; }
   .fm-page-btn { padding: 4px 7px; font-size: 0.65rem; min-width: 30px; }
 }
 

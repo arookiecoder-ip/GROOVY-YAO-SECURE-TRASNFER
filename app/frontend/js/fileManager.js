@@ -52,17 +52,16 @@ const FileManagerModule = {
           <button class="view-toggle-btn ${this._view === 'list' ? 'active' : ''}" data-v="list">≡ LIST</button>
           <button class="view-toggle-btn ${this._view === 'grid' ? 'active' : ''}" data-v="grid">⊞ GRID</button>
         </div>
-        <div class="sort-group">
-          <button class="sort-btn ${this._sort === 'date' ? 'active' : ''}" data-s="date">DATE</button>
-          <button class="sort-btn ${this._sort === 'name' ? 'active' : ''}" data-s="name">NAME</button>
-          <button class="sort-btn ${this._sort === 'size' ? 'active' : ''}" data-s="size">SIZE</button>
-        </div>
+        <select id="fm-sort" class="fm-select" aria-label="Sort files">
+          ${[['date', 'SORT: DATE'], ['name', 'SORT: NAME'], ['size', 'SORT: SIZE']].map(([v, l]) => `<option value="${v}"${this._sort === v ? ' selected' : ''}>${l}</option>`).join('')}
+        </select>
         <input id="fm-search" class="input fm-search" type="search" placeholder="SEARCH…" aria-label="Search files by name" />
-        <div class="perpage-group">
-          <span class="perpage-label">SHOW</span>
-          ${[25, 50, 100, 0].map(n => `<button class="perpage-btn${this._perPage === n ? ' active' : ''}" data-pp="${n}">${n === 0 ? 'ALL' : n}</button>`).join('')}
-        </div>
-        <button class="btn btn-ghost btn-sm" id="btn-sync" title="Sync files">⟳ SYNC</button>
+        <select id="fm-perpage" class="fm-select" aria-label="Files per page">
+          ${[25, 50, 100, 0].map(n => `<option value="${n}"${this._perPage === n ? ' selected' : ''}>SHOW: ${n === 0 ? 'ALL' : n}</option>`).join('')}
+        </select>
+        <button class="act-btn" id="btn-sync" title="Refresh files" aria-label="Refresh files">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.61-3.89"/><path d="M13.5 1.5v3h-3"/></svg>
+        </button>
       </div>
       <div id="files-content"></div>
     `;
@@ -86,25 +85,19 @@ const FileManagerModule = {
       this._renderFiles();
     }, 200));
 
-    container.querySelectorAll('.sort-btn').forEach((b) => {
-      b.addEventListener('click', () => {
-        this._sort = b.dataset.s;
-        localStorage.setItem('fm-sort', this._sort);
-        container.querySelectorAll('.sort-btn').forEach((x) => x.classList.remove('active'));
-        b.classList.add('active');
-        this.refresh();
-      });
+    const sortSelect = container.querySelector('#fm-sort');
+    sortSelect.addEventListener('change', () => {
+      this._sort = sortSelect.value;
+      localStorage.setItem('fm-sort', this._sort);
+      this.refresh();
     });
 
-    container.querySelectorAll('.perpage-btn').forEach((b) => {
-      b.addEventListener('click', () => {
-        this._perPage = parseInt(b.dataset.pp, 10);
-        localStorage.setItem('fm-perpage', this._perPage);
-        this._page = 1;
-        container.querySelectorAll('.perpage-btn').forEach((x) => x.classList.remove('active'));
-        b.classList.add('active');
-        this._renderFiles();
-      });
+    const perPageSelect = container.querySelector('#fm-perpage');
+    perPageSelect.addEventListener('change', () => {
+      this._perPage = parseInt(perPageSelect.value, 10);
+      localStorage.setItem('fm-perpage', this._perPage);
+      this._page = 1;
+      this._renderFiles();
     });
 
     // Create the floating bulk-action bar (hidden by default)
@@ -362,8 +355,7 @@ const FileManagerModule = {
               </th>
               <th>NAME</th>
               <th>SIZE</th>
-              <th>UPLOADED D&T</th>
-              <th class="col-downloads">Downloads</th>
+              <th>UPLOADED</th>
               <th>ACTIONS</th>
             </tr>
           </thead>
@@ -462,7 +454,6 @@ const FileManagerModule = {
         <td><span class="file-name" title="${Utils.escape(f.name)}">${Utils.escape(f.name)}</span></td>
         <td class="file-size">${Utils.formatBytes(f.size_bytes)}</td>
         <td class="file-size">${this._formatIST(f.created_at)}</td>
-        <td class="file-size col-downloads">${f.download_count}</td>
         <td class="file-actions">${this._actionBar(f)}</td>
       </tr>
     `;

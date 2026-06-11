@@ -19,7 +19,7 @@
 
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 
-  --radius: 2px;
+  --radius: 4px;
   --gap: 16px;
   --transition: 150ms ease;
 }
@@ -219,14 +219,14 @@ html, body {
 }
 .btn-ghost:hover:not(:disabled) { border-color: var(--color-text-dim); color: var(--color-text); }
 
-#btn-logout { border-color: #c0392b; color: #c0392b; }
-#btn-logout:hover:not(:disabled) { background: #c0392b; border-color: #c0392b; color: #fff; }
+#btn-logout { border-color: transparent; color: var(--color-text-dim); }
+#btn-logout:hover:not(:disabled) { border-color: var(--color-red); color: var(--color-red); background: rgba(255, 0, 60, 0.06); }
 
-#btn-sync { border-color: #00bcd4; color: #00bcd4; }
-#btn-sync:hover:not(:disabled) { background: #00bcd4; border-color: #00bcd4; color: #fff; }
+#btn-sync { border: 1px solid var(--color-border2); width: 32px; height: 32px; }
+#btn-sync:hover:not(:disabled) { border-color: var(--color-cyan-dim); }
 
-#btn-theme { border-color: #f5a623; color: #f5a623; }
-#btn-theme:hover:not(:disabled) { background: #f5a623; border-color: #f5a623; color: #fff; }
+#btn-theme { border-color: transparent; color: var(--color-text-dim); }
+#btn-theme:hover:not(:disabled) { border-color: var(--color-border2); color: #f5a623; }
 
 .btn-danger {
   background: transparent;
@@ -241,17 +241,15 @@ html, body {
 #btn-create-upload-link {
   color: var(--color-green);
   border-color: var(--color-green);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  padding: 7px 16px;
+  padding: 6px 14px;
   letter-spacing: 0.1em;
-  box-shadow: 0 0 8px rgba(0, 255, 136, 0.15);
 }
 #btn-create-upload-link:hover:not(:disabled) {
   background: rgba(0, 255, 136, 0.08);
   border-color: var(--color-green);
   color: var(--color-green);
-  box-shadow: 0 0 14px rgba(0, 255, 136, 0.25);
 }
 
 /* ── Inputs ── */
@@ -340,17 +338,17 @@ html, body {
   white-space: nowrap;
 }
 .storage-bar-track {
-  width: 80px;
-  height: 6px;
+  width: 64px;
+  height: 3px;
   background: var(--color-border);
-  border-radius: 3px;
+  border-radius: 2px;
   overflow: hidden;
 }
 .storage-bar-fill {
   height: 100%;
   width: 0%;
-  background: var(--color-cyan);
-  border-radius: 3px;
+  background: var(--color-cyan-dim);
+  border-radius: 2px;
   transition: width 0.4s ease, background 0.4s ease;
 }
 .storage-bar-fill.warn { background: var(--color-yellow); }
@@ -384,25 +382,31 @@ html, body {
 
 /* ── Drop zone ── */
 .drop-zone {
-  border: 2px dashed var(--color-border2);
+  border: 1px dashed var(--color-border2);
   border-radius: var(--radius);
-  padding: 36px 24px;
+  padding: 18px 24px;
   text-align: center;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: border-color var(--transition), background var(--transition);
   position: relative;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 .drop-zone:hover, .drop-zone.drag-over {
-  border-color: var(--color-cyan);
-  background: rgba(0, 245, 255, 0.03);
-  box-shadow: inset 0 0 40px rgba(0, 245, 255, 0.05), 0 0 20px rgba(0, 245, 255, 0.1);
+  border-color: var(--color-cyan-dim);
+  background: rgba(0, 245, 255, 0.02);
 }
-.drop-zone.drag-over { border-style: solid; }
+.drop-zone.drag-over { border-style: solid; border-color: var(--color-cyan); }
 
-.drop-icon { font-size: 2.5rem; color: var(--color-cyan-dim); margin-bottom: 10px; }
-.drop-text { font-size: 1.1rem; font-weight: 700; color: var(--color-text-bright); letter-spacing: 0.1em; }
-.drop-sub { font-size: 0.85rem; color: var(--color-text-dim); margin-top: 6px; }
+.drop-zone-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.drop-icon { font-size: 1.4rem; color: var(--color-cyan-dim); line-height: 1; }
+.drop-text { font-size: 0.9rem; font-weight: 700; color: var(--color-text-bright); letter-spacing: 0.1em; }
+.drop-sub { font-size: 0.78rem; color: var(--color-text-dim); }
 
 .file-input-hidden { position: absolute; inset: 0; opacity: 0; pointer-events: none; width: 100%; height: 100%; }
 
@@ -654,10 +658,10 @@ html, body {
 
   .app-main { padding: 12px; overflow-x: hidden; }
 
-  .drop-zone { padding: 32px 16px; margin-bottom: 16px; }
-  .drop-icon { font-size: 2rem; }
-  .drop-text { font-size: 1rem; }
-  .drop-sub { font-size: 0.8rem; }
+  .drop-zone { padding: 16px 12px; margin-bottom: 16px; }
+  .drop-icon { font-size: 1.2rem; }
+  .drop-text { font-size: 0.85rem; }
+  .drop-sub { font-size: 0.72rem; }
 
   .app-footer {
     flex-direction: column;
