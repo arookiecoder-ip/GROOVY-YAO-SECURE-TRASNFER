@@ -169,7 +169,7 @@
           <button class="drawer-nav-btn active" data-view="files">FILES</button>
           <button class="drawer-nav-btn" data-view="history">HISTORY</button>
           <button class="drawer-nav-btn" data-view="stats">STATS</button>
-          <button class="drawer-nav-btn" data-view="upload-links">LINK STATUS</button>
+          <button class="drawer-nav-btn" data-view="upload-links">UPLOAD LINKS</button>
           <button class="drawer-nav-btn" data-view="bundles">BUNDLES</button>
         </div>
         <div class="drawer-storage" id="drawer-storage" style="display:none">
@@ -247,7 +247,7 @@
   </div>
 
   <!-- Toast container -->
-  <div id="toast-container" class="toast-container" aria-live="assertive" aria-atomic="true"></div>
+  <div id="toast-container" class="toast-container"></div>
 
   <!-- QR overlay -->
   <div id="qr-overlay" class="qr-overlay hidden" role="dialog" aria-modal="true" aria-label="QR Code">
@@ -260,13 +260,13 @@
     </div>
   </div>
 
-  <!-- Footer -->
-  <div id="confirm-modal" class="confirm-overlay hidden">
+  <!-- Confirm modal -->
+  <div id="confirm-modal" class="confirm-overlay hidden" role="dialog" aria-modal="true" aria-describedby="confirm-message">
     <div class="confirm-box">
       <p id="confirm-message" class="confirm-msg"></p>
       <div class="confirm-actions">
         <button id="confirm-cancel" class="btn btn-ghost btn-sm">Cancel</button>
-        <button id="confirm-ok" class="btn btn-danger btn-sm">Delete</button>
+        <button id="confirm-ok" class="btn btn-danger btn-sm">Confirm</button>
       </div>
     </div>
   </div>

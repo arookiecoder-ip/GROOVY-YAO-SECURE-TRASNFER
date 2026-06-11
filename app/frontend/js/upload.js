@@ -14,6 +14,9 @@ const UploadManager = {
     const fi = document.getElementById('file-input');
 
     dz.addEventListener('click', () => fi.click());
+    dz.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fi.click(); }
+    });
     dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag-over', 'neon-pulse'); });
     dz.addEventListener('dragleave', () => dz.classList.remove('drag-over', 'neon-pulse'));
     dz.addEventListener('drop', (e) => {

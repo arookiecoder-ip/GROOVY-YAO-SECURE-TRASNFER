@@ -82,22 +82,28 @@
     const bootMatrix = document.getElementById('boot-matrix');
     const bootLogo = document.getElementById('boot-logo');
 
-    const rafId = createMatrixRain(bootMatrix);
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const checks = Promise.all([checkSession(), checkFirstRun()]);
 
-    await delay(800);
+    const rafId = reducedMotion ? null : createMatrixRain(bootMatrix);
     bootLogo.classList.add('boot-logo-visible');
 
-    const [sessionValid, isFirstRun] = await Promise.all([
-      checkSession(),
-      checkFirstRun(),
-      delay(BOOT_DURATION - 800),
-    ]);
+    const [sessionValid, isFirstRun] = await checks;
 
-    cancelAnimationFrame(rafId);
+    // Full intro only plays before the auth/setup screens — returning
+    // authenticated users (and reduced-motion users) go straight in.
+    if (!sessionValid && !reducedMotion) {
+      await delay(BOOT_DURATION);
+    }
 
-    bootScreen.style.transition = 'opacity 0.4s ease';
-    bootScreen.style.opacity = '0';
-    await delay(400);
+    if (rafId !== null) cancelAnimationFrame(rafId);
+
+    const fadeMs = reducedMotion ? 0 : sessionValid ? 150 : 400;
+    if (fadeMs > 0) {
+      bootScreen.style.transition = `opacity ${fadeMs}ms ease`;
+      bootScreen.style.opacity = '0';
+      await delay(fadeMs);
+    }
     bootScreen.style.display = 'none';
     document.body.classList.remove('boot-phase');
 
@@ -182,9 +188,9 @@
         document.getElementById('ul-opt-single').classList.add('selected');
         document.getElementById('ul-opt-multi').classList.remove('selected');
         document.getElementById('ul-opt-unlimited').classList.remove('selected');
-        ulDialog.classList.remove('hidden');
+        Utils.openModal(ulDialog, closeUlDialog);
       }
-      function closeUlDialog() { ulDialog.classList.add('hidden'); }
+      function closeUlDialog() { Utils.closeModal(ulDialog); }
 
       document.getElementById('ul-dialog-close').addEventListener('click', closeUlDialog);
       ulDialog.addEventListener('click', (e) => { if (e.target === ulDialog) closeUlDialog(); });
@@ -256,6 +262,9 @@
       hamburger.addEventListener('click', () => drawer.classList.contains('open') ? closeDrawer() : openDrawer());
       backdrop.addEventListener('click', closeDrawer);
       document.getElementById('btn-drawer-close').addEventListener('click', closeDrawer);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
+      });
 
       // Drawer nav mirrors main nav
       document.querySelectorAll('.drawer-nav-btn').forEach((btn) => {
@@ -299,40 +308,46 @@
       });
 
       // Disk storage bar
-      fetch('/api/stats', { credentials: 'same-origin' })
-        .then(r => r.ok ? r.json() : null)
-        .then(s => {
-          if (!s || !s.disk) return;
-          const pct = s.disk.total > 0 ? (s.disk.used / s.disk.total) * 100 : 0;
-          const text = `${Utils.formatBytes(s.disk.used)} / ${Utils.formatBytes(s.disk.total)}`;
-          const freeText = `${Utils.formatBytes(s.disk.free)} free`;
+      function refreshStorageBar() {
+        fetch('/api/stats', { credentials: 'same-origin' })
+          .then(r => r.ok ? r.json() : null)
+          .then(s => {
+            if (!s || !s.disk) return;
+            const pct = s.disk.total > 0 ? (s.disk.used / s.disk.total) * 100 : 0;
+            const text = `${Utils.formatBytes(s.disk.used)} / ${Utils.formatBytes(s.disk.total)}`;
+            const freeText = `${Utils.formatBytes(s.disk.free)} free`;
 
-          const fill = document.getElementById('storage-bar-fill');
-          const label = document.getElementById('storage-pct');
-          const wrap = document.getElementById('header-storage');
-          fill.style.width = pct.toFixed(1) + '%';
-          fill.classList.toggle('warn', pct >= 75 && pct < 90);
-          fill.classList.toggle('danger', pct >= 90);
-          label.textContent = text;
-          wrap.title = freeText;
-          wrap.style.display = 'flex';
+            const fill = document.getElementById('storage-bar-fill');
+            const label = document.getElementById('storage-pct');
+            const wrap = document.getElementById('header-storage');
+            fill.style.width = pct.toFixed(1) + '%';
+            fill.classList.toggle('warn', pct >= 75 && pct < 90);
+            fill.classList.toggle('danger', pct >= 90);
+            label.textContent = text;
+            wrap.title = freeText;
+            wrap.style.display = 'flex';
 
-          const drawerFill = document.getElementById('drawer-storage-bar-fill');
-          const drawerLabel = document.getElementById('drawer-storage-pct');
-          const drawerWrap = document.getElementById('drawer-storage');
-          drawerFill.style.width = pct.toFixed(1) + '%';
-          drawerFill.classList.toggle('warn', pct >= 75 && pct < 90);
-          drawerFill.classList.toggle('danger', pct >= 90);
-          drawerLabel.textContent = text;
-          drawerWrap.title = freeText;
-          drawerWrap.style.display = 'flex';
-        })
-        .catch(() => {});
+            const drawerFill = document.getElementById('drawer-storage-bar-fill');
+            const drawerLabel = document.getElementById('drawer-storage-pct');
+            const drawerWrap = document.getElementById('drawer-storage');
+            drawerFill.style.width = pct.toFixed(1) + '%';
+            drawerFill.classList.toggle('warn', pct >= 75 && pct < 90);
+            drawerFill.classList.toggle('danger', pct >= 90);
+            drawerLabel.textContent = text;
+            drawerWrap.title = freeText;
+            drawerWrap.style.display = 'flex';
+          })
+          .catch(() => {});
+      }
+      refreshStorageBar();
+      // Debounced so bursts of file events (bulk delete) trigger one fetch
+      const refreshStorageBarSoon = Utils.debounce(refreshStorageBar, 1000);
 
       // WS events
       WSClient.on('FILE_EXPIRED', (msg) => {
         Notifications.warn('File expired', msg.fileId);
         FileManagerModule.refresh();
+        refreshStorageBarSoon();
       });
       WSClient.on('UPLOAD_PROGRESS', (msg) => {
         Progress.update(msg.uploadId, msg.percent, msg.bytesLoaded || 0, msg.speedBps || 0);
@@ -340,13 +355,14 @@
       WSClient.on('UPLOAD_COMPLETE', (msg) => {
         Progress.complete(msg.uploadId);
         FileManagerModule.refresh();
+        refreshStorageBarSoon();
       });
       WSClient.on('DOWNLOAD_READY', (msg) => {
         Notifications.success('DOWNLOAD READY', msg.filename || '');
       });
-      WSClient.on('FILE_DELETED', () => FileManagerModule.refresh());
+      WSClient.on('FILE_DELETED', () => { FileManagerModule.refresh(); refreshStorageBarSoon(); });
       WSClient.on('FILE_UPDATED', () => FileManagerModule.refresh());
-      WSClient.on('FILE_ADDED', () => FileManagerModule.refresh());
+      WSClient.on('FILE_ADDED', () => { FileManagerModule.refresh(); refreshStorageBarSoon(); });
     },
   };
 

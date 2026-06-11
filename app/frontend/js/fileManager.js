@@ -3,6 +3,7 @@ const FileManagerModule = {
   _files: [],
   _view: localStorage.getItem('fm-view') || 'list',
   _sort: localStorage.getItem('fm-sort') || 'date',
+  _search: '',
   _actionsAbort: null,
 
   // Pagination state
@@ -56,6 +57,7 @@ const FileManagerModule = {
           <button class="sort-btn ${this._sort === 'name' ? 'active' : ''}" data-s="name">NAME</button>
           <button class="sort-btn ${this._sort === 'size' ? 'active' : ''}" data-s="size">SIZE</button>
         </div>
+        <input id="fm-search" class="input fm-search" type="search" placeholder="SEARCH…" aria-label="Search files by name" />
         <div class="perpage-group">
           <span class="perpage-label">SHOW</span>
           ${[25, 50, 100, 0].map(n => `<button class="perpage-btn${this._perPage === n ? ' active' : ''}" data-pp="${n}">${n === 0 ? 'ALL' : n}</button>`).join('')}
@@ -76,6 +78,13 @@ const FileManagerModule = {
     });
 
     container.querySelector('#btn-sync').addEventListener('click', () => this.refresh());
+
+    const searchInput = container.querySelector('#fm-search');
+    searchInput.addEventListener('input', Utils.debounce(() => {
+      this._search = searchInput.value;
+      this._page = 1;
+      this._renderFiles();
+    }, 200));
 
     container.querySelectorAll('.sort-btn').forEach((b) => {
       b.addEventListener('click', () => {
@@ -304,14 +313,25 @@ const FileManagerModule = {
       return;
     }
 
+    // Search filter (client-side, matches filename)
+    const query = this._search.trim().toLowerCase();
+    const files = query
+      ? this._files.filter((f) => (f.name || '').toLowerCase().includes(query))
+      : this._files;
+
+    if (files.length === 0) {
+      content.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⬡</div><div class="empty-state-text">NO MATCHES FOR “${Utils.escape(this._search.trim())}”</div></div>`;
+      return;
+    }
+
     // Pagination
-    const total = this._files.length;
+    const total = files.length;
     const perPage = this._perPage === 0 ? total : this._perPage;
     const totalPages = Math.ceil(total / perPage);
     this._page = Math.min(this._page, totalPages);
     const start = (this._page - 1) * perPage;
     const end = Math.min(start + perPage, total);
-    const pageFiles = this._files.slice(start, end);
+    const pageFiles = files.slice(start, end);
 
     // Pagination info string e.g. "1–25 of 87"
     const rangeLabel = total > perPage

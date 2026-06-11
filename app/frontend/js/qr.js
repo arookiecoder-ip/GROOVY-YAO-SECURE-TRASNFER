@@ -6,7 +6,8 @@ const QRModule = {
 
     img.innerHTML = '<div style="color:var(--color-text-dim);padding:40px">LOADING...</div>';
     url.textContent = '';
-    overlay.classList.remove('hidden');
+    const close = () => Utils.closeModal(overlay);
+    Utils.openModal(overlay, close);
 
     try {
       const res = await fetch(`/api/files/${fileId}/qr`, { credentials: 'same-origin' });
@@ -25,7 +26,7 @@ const QRModule = {
       copyBtn.textContent = 'COPIED!';
       setTimeout(() => { copyBtn.textContent = orig; }, 1500);
     };
-    document.getElementById('qr-close').onclick = () => overlay.classList.add('hidden');
-    overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.add('hidden'); };
+    document.getElementById('qr-close').onclick = close;
+    overlay.onclick = (e) => { if (e.target === overlay) close(); };
   },
 };

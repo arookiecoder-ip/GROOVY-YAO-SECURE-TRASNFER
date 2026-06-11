@@ -7,6 +7,7 @@
 }
 
 .file-manager-toolbar .sort-group { display: flex; gap: 4px; margin-left: auto; }
+.file-manager-toolbar .fm-search { padding: 6px 10px; font-size: 0.78rem; width: 150px; min-width: 0; }
 
 .sort-btn {
   background: transparent;
@@ -278,6 +279,7 @@
 @media (max-width: 640px) {
   .file-manager-toolbar { flex-wrap: wrap; gap: 8px; }
   .file-manager-toolbar .sort-group { margin-left: 0; }
+  .file-manager-toolbar .fm-search { flex: 1 1 100%; width: auto; }
 
   /* Stacked card layout — kill table structure on mobile */
   .file-list, .file-list tbody { display: block; width: 100%; }

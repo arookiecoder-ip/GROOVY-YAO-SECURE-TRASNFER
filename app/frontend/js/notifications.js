@@ -8,6 +8,8 @@ const Notifications = {
   show(title, body = '', type = 'info', duration = 4000) {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type} toast-enter`;
+    // alert = assertive (interrupts screen readers), status = polite
+    toast.setAttribute('role', type === 'error' || type === 'warn' ? 'alert' : 'status');
     toast.innerHTML = `
       <div class="toast-title">${Utils.escape(title)}</div>
       ${body ? `<div class="toast-body">${Utils.escape(body)}</div>` : ''}

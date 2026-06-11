@@ -69,6 +69,57 @@ const Utils = {
       .replace(/'/g, '&#39;');
   },
 
+  // ── Modal management ──────────────────────────────────────────────────
+  // Shared open/close for overlay dialogs: Escape closes the top-most one,
+  // Tab stays inside it, and focus returns to the trigger element on close.
+  _modalStack: [],
+  _modalKeyHandler: null,
+
+  _modalFocusables(el) {
+    return [...el.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )].filter((n) => !n.disabled && n.offsetParent !== null);
+  },
+
+  openModal(el, onRequestClose) {
+    this._modalStack.push({ el, onRequestClose, prevFocus: document.activeElement });
+    el.classList.remove('hidden');
+    if (!this._modalKeyHandler) {
+      this._modalKeyHandler = (e) => {
+        const top = this._modalStack[this._modalStack.length - 1];
+        if (!top) return;
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          if (top.onRequestClose) top.onRequestClose();
+          else this.closeModal(top.el);
+        } else if (e.key === 'Tab') {
+          const items = this._modalFocusables(top.el);
+          if (items.length === 0) return;
+          const first = items[0];
+          const last = items[items.length - 1];
+          if (!top.el.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+          else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      };
+      document.addEventListener('keydown', this._modalKeyHandler);
+    }
+    const items = this._modalFocusables(el);
+    if (items.length) items[0].focus();
+  },
+
+  closeModal(el) {
+    el.classList.add('hidden');
+    const idx = this._modalStack.findIndex((m) => m.el === el);
+    if (idx === -1) return;
+    const [entry] = this._modalStack.splice(idx, 1);
+    if (this._modalStack.length === 0 && this._modalKeyHandler) {
+      document.removeEventListener('keydown', this._modalKeyHandler);
+      this._modalKeyHandler = null;
+    }
+    if (entry.prevFocus && document.contains(entry.prevFocus)) entry.prevFocus.focus();
+  },
+
   confirm(message, okLabel = 'Confirm') {
     return new Promise((resolve) => {
       const modal = document.getElementById('confirm-modal');
@@ -77,9 +128,8 @@ const Utils = {
       const cancel = document.getElementById('confirm-cancel');
       msg.textContent = message;
       ok.textContent = okLabel;
-      modal.classList.remove('hidden');
       const cleanup = (result) => {
-        modal.classList.add('hidden');
+        this.closeModal(modal);
         ok.removeEventListener('click', onOk);
         cancel.removeEventListener('click', onCancel);
         resolve(result);
@@ -88,6 +138,7 @@ const Utils = {
       const onCancel = () => cleanup(false);
       ok.addEventListener('click', onOk);
       cancel.addEventListener('click', onCancel);
+      this.openModal(modal, onCancel);
     });
   },
 
