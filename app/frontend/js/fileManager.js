@@ -295,6 +295,144 @@ const FileManagerModule = {
     if (failed > 0) Notifications.error(`${failed} deletion${failed !== 1 ? 's' : ''} failed`);
   },
 
+  /**
+   * Set visibility (public/private) for all selected files.
+   */
+  async _bulkVisibility(isPublic) {
+    const ids = [...this._selected];
+    if (ids.length === 0) return;
+
+    let ok = 0;
+    let failed = 0;
+
+    for (const id of ids) {
+      const res = await Utils.apiFetch(`/api/files/${id}/visibility`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPublic }),
+        credentials: 'same-origin',
+      });
+      if (res.ok) {
+        ok++;
+        const data = await res.json().catch(() => ({}));
+        const f = this._files.find((file) => file.id === id);
+        if (f) { f.is_public = isPublic; f.share_token = data.shareToken || null; }
+      } else {
+        failed++;
+      }
+    }
+
+    this._renderFiles();
+    if (ok > 0) Notifications.success(`${ok} file${ok !== 1 ? 's' : ''} made ${isPublic ? 'public' : 'private'}`);
+    if (failed > 0) Notifications.error(`${failed} visibility change${failed !== 1 ? 's' : ''} failed`);
+  },
+
+  // ── Selection UI sync ──────────────────────────────────────────────────────
+
+  /** Update every checkbox/row/card highlight from this._selected */
+  _syncSelectionUI() {
+    document.querySelectorAll('.fm-checkbox[data-id]').forEach((cb) => {
+      const sel = this._selected.has(cb.dataset.id);
+      cb.checked = sel;
+      const row = cb.closest('tr');
+      const card = cb.closest('.file-card');
+      if (row) row.classList.toggle('file-row-selected', sel);
+      if (card) card.classList.toggle('file-card-selected', sel);
+    });
+    this._updateBulkBar();
+  },
+
+  // ── Context menu (right-click on selected files) ───────────────────────────
+
+  _hideContextMenu() {
+    const menu = document.getElementById('fm-context-menu');
+    if (menu) {
+      if (menu._ac) menu._ac.abort();
+      menu.remove();
+    }
+  },
+
+  _showContextMenu(x, y) {
+    this._hideContextMenu();
+    const n = this._selected.size;
+    if (n === 0) return;
+
+    const ids = [...this._selected];
+    const single = n === 1 ? this._files.find((f) => f.id === ids[0]) : null;
+    const previewable = single && single.mime_type &&
+      (single.mime_type.startsWith('image/') || single.mime_type === 'application/pdf');
+
+    const icon = (paths) =>
+      `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">${paths}</svg>`;
+
+    const menu = document.createElement('div');
+    menu.id = 'fm-context-menu';
+    menu.className = 'fm-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = `
+      <div class="fm-ctx-header">${n} file${n !== 1 ? 's' : ''} selected</div>
+      <button class="fm-ctx-item" data-ctx="download" role="menuitem">
+        ${icon('<path d="M8 2v8M5 7l3 3 3-3"/><path d="M2 13h12"/>')} DOWNLOAD
+      </button>
+      ${previewable ? `
+      <button class="fm-ctx-item" data-ctx="preview" role="menuitem">
+        ${icon('<path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/>')} PREVIEW
+      </button>` : ''}
+      <button class="fm-ctx-item" data-ctx="bundle" role="menuitem">
+        ${icon('<circle cx="12" cy="4" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="12" cy="12" r="2"/><path d="M6 7l4-2M6 9l4 2"/>')} CREATE BUNDLE LINK
+      </button>
+      <div class="fm-ctx-divider"></div>
+      <button class="fm-ctx-item" data-ctx="public" role="menuitem">
+        ${icon('<circle cx="8" cy="8" r="6.5"/><path d="M1.5 8h13M8 1.5c-4 4.5-4 8.5 0 13M8 1.5c4 4.5 4 8.5 0 13"/>')} MAKE PUBLIC
+      </button>
+      <button class="fm-ctx-item" data-ctx="private" role="menuitem">
+        ${icon('<rect x="3" y="7" width="10" height="7" rx="1"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/>')} MAKE PRIVATE
+      </button>
+      <div class="fm-ctx-divider"></div>
+      <button class="fm-ctx-item fm-ctx-danger" data-ctx="delete" role="menuitem">
+        ${icon('<path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9"/>')} DELETE
+      </button>
+      <button class="fm-ctx-item" data-ctx="clear" role="menuitem">
+        ${icon('<path d="M3 3l10 10M13 3L3 13"/>')} CLEAR SELECTION
+      </button>
+    `;
+    document.body.appendChild(menu);
+
+    // Clamp inside the viewport (flip away from edges)
+    const r = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - r.width - 8))}px`;
+    menu.style.top  = `${Math.max(8, Math.min(y, window.innerHeight - r.height - 8))}px`;
+
+    menu.addEventListener('click', async (e) => {
+      const item = e.target.closest('[data-ctx]');
+      if (!item) return;
+      const action = item.dataset.ctx;
+      this._hideContextMenu();
+      if (action === 'download')      await this._bulkDownload();
+      else if (action === 'preview' && single) this._showPreview(single.id, single.mime_type, single.name);
+      else if (action === 'bundle')   await this._bulkShare();
+      else if (action === 'public')   await this._bulkVisibility(true);
+      else if (action === 'private')  await this._bulkVisibility(false);
+      else if (action === 'delete')   await this._bulkDelete();
+      else if (action === 'clear')    this._clearSelection();
+    });
+    menu.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Dismiss on outside click, Escape, scroll, or resize
+    const ac = new AbortController();
+    menu._ac = ac;
+    document.addEventListener('mousedown', (e) => {
+      if (!menu.contains(e.target)) this._hideContextMenu();
+    }, { signal: ac.signal, capture: true });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this._hideContextMenu();
+    }, { signal: ac.signal });
+    document.addEventListener('scroll', () => this._hideContextMenu(),
+      { signal: ac.signal, capture: true, passive: true });
+    window.addEventListener('resize', () => this._hideContextMenu(),
+      { signal: ac.signal });
+  },
+
   // ── Rendering ──────────────────────────────────────────────────────────────
 
   _renderFiles() {
@@ -507,6 +645,25 @@ const FileManagerModule = {
     // ── Drag-to-select on the full view area (not just the table) ─────────
     const viewContainer = document.getElementById('view-files');
     if (viewContainer) this._bindDragSelect(viewContainer, sig);
+
+    // ── Right-click context menu on rows/cards ─────────────────────────────
+    // Right-clicking a selected file opens the menu for the whole selection.
+    // Right-clicking an unselected file selects just that file first
+    // (Google Drive behaviour). Empty space keeps the browser's own menu.
+    root.addEventListener('contextmenu', (e) => {
+      const el = e.target.closest('tbody tr, .file-card');
+      if (!el) { this._hideContextMenu(); return; }
+      const cb = el.querySelector('.fm-checkbox[data-id]');
+      const id = cb ? cb.dataset.id : null;
+      if (!id) return;
+      e.preventDefault();
+      if (!this._selected.has(id)) {
+        this._selected.clear();
+        this._selected.add(id);
+        this._syncSelectionUI();
+      }
+      this._showContextMenu(e.clientX, e.clientY);
+    }, sig);
 
     root.addEventListener('click', async (e) => {
       // ── Row/card click → toggle selection ─────────────────────────────

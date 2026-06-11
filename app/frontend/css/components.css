@@ -974,3 +974,46 @@
 .file-card {
   cursor: default;
 }
+
+/* ── Context menu (right-click on selected files) ── */
+.fm-context-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 230px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.fm-ctx-header {
+  font-size: 0.66rem;
+  color: var(--color-text-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 6px 10px 4px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 4px;
+}
+.fm-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.fm-ctx-item:hover { background: rgba(255, 255, 255, 0.06); color: var(--color-text-bright); }
+[data-theme="light"] .fm-ctx-item:hover { background: rgba(0, 0, 0, 0.06); }
+.fm-ctx-item svg { flex-shrink: 0; opacity: 0.8; }
+.fm-ctx-danger { color: var(--color-red); }
+.fm-ctx-danger:hover { background: rgba(255, 60, 60, 0.12); color: var(--color-red); }
+.fm-ctx-divider { height: 1px; background: var(--color-border); margin: 4px 0; }
