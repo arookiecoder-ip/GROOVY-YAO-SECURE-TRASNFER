@@ -616,6 +616,27 @@ const FileManagerModule = {
       a.left < b.right && a.right > b.left &&
       a.top  < b.bottom && a.bottom > b.top;
 
+    // ── Scroll container ───────────────────────────────────────────────────
+    // html and body both have overflow-x:hidden, which makes the BODY its own
+    // scroll container — window.scrollY stays 0 and window.scrollBy() is a
+    // no-op. Detect the element that actually scrolls the file list instead
+    // of assuming the window does.
+
+    const getScroller = () => {
+      let el = root.parentElement;
+      while (el) {
+        const { overflowY } = getComputedStyle(el);
+        const scrollable = overflowY === 'auto' || overflowY === 'scroll';
+        if (scrollable && el.scrollHeight > el.clientHeight + 1) return el;
+        el = el.parentElement;
+      }
+      return document.scrollingElement || document.documentElement;
+    };
+
+    let _scroller = null;
+    const scrollLeft = () => (_scroller ? _scroller.scrollLeft : 0);
+    const scrollTop  = () => (_scroller ? _scroller.scrollTop  : 0);
+
     // ── Lasso rectangle element ────────────────────────────────────────────
 
     const ensureLasso = () => {
@@ -683,10 +704,12 @@ const FileManagerModule = {
       ds.active      = true;
       ds.startX      = clientX;
       ds.startY      = clientY;
-      // Anchor in DOCUMENT coordinates so the lasso stays glued to the content
-      // when the page scrolls mid-drag (auto-scroll or mouse wheel).
-      ds.startDocX   = clientX + window.scrollX;
-      ds.startDocY   = clientY + window.scrollY;
+      // Anchor in CONTENT coordinates of the real scroll container so the
+      // lasso stays glued to the rows when the list scrolls mid-drag
+      // (auto-scroll or mouse wheel).
+      _scroller      = getScroller();
+      ds.startDocX   = clientX + scrollLeft();
+      ds.startDocY   = clientY + scrollTop();
       ds.preSelected = new Set(this._selected);
       ds._dragging   = false; // real drag hasn't started yet — waiting for threshold
       ds._additive   = additive;
@@ -695,9 +718,9 @@ const FileManagerModule = {
     };
 
     // Anchor converted back to current viewport coordinates — shifts as the
-    // page scrolls so element getBoundingClientRect() comparisons stay valid
-    const anchorX = () => ds.startDocX - window.scrollX;
-    const anchorY = () => ds.startDocY - window.scrollY;
+    // list scrolls so element getBoundingClientRect() comparisons stay valid
+    const anchorX = () => ds.startDocX - scrollLeft();
+    const anchorY = () => ds.startDocY - scrollTop();
 
     // Called once the mouse moves beyond DRAG_THRESHOLD — commits the drag
     const DRAG_THRESHOLD = 5; // px
@@ -740,26 +763,37 @@ const FileManagerModule = {
 
     const autoScrollTick = () => {
       if (!ds.active) return;
+      if (!_scroller) _scroller = getScroller();
 
       const vh = window.innerHeight;
+      // Scroll zones relative to the scroller's visible area (clamped to the
+      // viewport in case the scroller is taller than the screen).
+      const isDocScroller = _scroller === document.body ||
+        _scroller === document.documentElement;
+      const sRect = isDocScroller
+        ? { top: 0, bottom: vh }
+        : _scroller.getBoundingClientRect();
+      const topEdge = Math.max(sRect.top, 0);
       // Account for the bulk-action bar (fixed at bottom) so the scroll zone
       // starts above it, not behind it.
       const bulkBar = document.getElementById('bulk-action-bar');
       const bulkBarH = (bulkBar && !bulkBar.classList.contains('hidden'))
         ? bulkBar.offsetHeight : 0;
-      const bottomEdge = vh - bulkBarH;
+      const bottomEdge = Math.min(sRect.bottom, vh) - bulkBarH;
       let delta = 0;
 
-      if (_curY < SCROLL_ZONE) {
+      if (_curY < topEdge + SCROLL_ZONE) {
         // Near top — scroll up, faster the closer to the edge
-        delta = -SCROLL_SPEED * (1 - _curY / SCROLL_ZONE);
+        delta = -SCROLL_SPEED * (1 - (_curY - topEdge) / SCROLL_ZONE);
       } else if (_curY > bottomEdge - SCROLL_ZONE) {
         // Near bottom — scroll down (above the bulk bar)
         delta = SCROLL_SPEED * (1 - (bottomEdge - _curY) / SCROLL_ZONE);
       }
 
       if (delta !== 0) {
-        window.scrollBy(0, delta);
+        // At least 1px per frame so movement starts right at the zone edge
+        delta = delta > 0 ? Math.max(1, delta) : Math.min(-1, delta);
+        _scroller.scrollTop += delta;
         // After scrolling, re-evaluate with the anchor mapped to the new
         // viewport position so the lasso keeps growing past one screenful
         updateSelection(anchorX(), anchorY(), _curX, _curY,
@@ -839,13 +873,15 @@ const FileManagerModule = {
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-    window.addEventListener('scroll', onScroll, { passive: true });
+    // Capture phase so we hear scrolls from ANY scroll container (element
+    // scroll events don't bubble, and the list scrolls inside <body>)
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
 
     // Clean up document-level listeners when the AbortController fires
     sig.signal.addEventListener('abort', () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      window.removeEventListener('scroll', onScroll);
+      document.removeEventListener('scroll', onScroll, { capture: true });
       stopAutoScroll();
       endDrag();
     });
