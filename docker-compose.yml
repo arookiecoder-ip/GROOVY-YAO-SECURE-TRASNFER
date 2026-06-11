@@ -5,7 +5,6 @@ services:
       dockerfile: Dockerfile
       args:
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
-        GIT_TIME: ${GIT_TIME:-unknown}
     restart: unless-stopped
     ports:
       - "127.0.0.1:3002:3000"

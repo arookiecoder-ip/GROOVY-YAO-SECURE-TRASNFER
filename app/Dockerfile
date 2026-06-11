@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ── Stage 1: deps ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS deps
 
@@ -7,16 +8,17 @@ WORKDIR /build
 RUN apk add --no-cache python3 make g++
 
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+# Cache mount keeps the npm download cache across builds, so a package.json
+# change only downloads/compiles what's new instead of everything
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 # ── Stage 2: production image ──────────────────────────────────────────────
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Build-time git metadata
+# Build-time git metadata (commit optional; time is stamped automatically)
 ARG GIT_COMMIT=unknown
-ARG GIT_TIME=unknown
 
 # Non-root user
 RUN addgroup -S filetransfer && adduser -S -G filetransfer filetransfer
@@ -24,11 +26,15 @@ RUN addgroup -S filetransfer && adduser -S -G filetransfer filetransfer
 # Runtime deps only
 COPY --from=deps /build/node_modules ./node_modules
 
-# App source
-COPY --chown=filetransfer:filetransfer . .
+# App source — only runtime files, in least-to-most-frequently-changed order
+# so an edit to src/ or frontend/ doesn't bust earlier layers
+COPY --chown=filetransfer:filetransfer package.json server.js ./
+COPY --chown=filetransfer:filetransfer frontend ./frontend
+COPY --chown=filetransfer:filetransfer src ./src
 
-# Bake git info into a static JSON file served as a frontend asset
-RUN echo "{\"commit\":\"${GIT_COMMIT}\",\"time\":\"${GIT_TIME}\"}" > frontend/version.json
+# Bake build info into a static JSON file served as a frontend asset.
+# This layer sits after COPY, so any source change re-runs it with a fresh timestamp.
+RUN echo "{\"commit\":\"${GIT_COMMIT}\",\"time\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > frontend/version.json
 
 # Persistent data dirs — mount these as volumes
 RUN mkdir -p /data/storage /data/chunks /data/db /data/logs \
