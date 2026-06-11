@@ -276,8 +276,10 @@ async function filesRoutes(fastify) {
     // Serve inline (no Content-Disposition: attachment) so browser renders it
     reply.header('Content-Type', mime);
     reply.header('X-Content-Type-Options', 'nosniff');
-    // Allow embedding in same-origin iframe
+    // Allow embedding in same-origin iframe (global CSP sets frame-ancestors 'none',
+    // which overrides X-Frame-Options, so it must be relaxed here too)
     reply.header('X-Frame-Options', 'SAMEORIGIN');
+    reply.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'self'; object-src 'self'; style-src 'unsafe-inline'");
 
     const readStream = fs.createReadStream(filePath);
     const decStream = createDecryptStream(row.id, saltHex);
